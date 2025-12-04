@@ -21,3 +21,8 @@ DEFAULT_SCAN_MODE = "True Gray"
 # OCR settings
 OCR_LANGUAGE = "deu"
 OCR_THRESHOLDS = [30, 40, 50, 60, 70, 80]
+
+# IMAP settings
+DEFAULT_IMAP_PORT = 993
+DEFAULT_IMAP_INBOX = "Rechnungseingang"
+DEFAULT_IMAP_ARCHIVE = "Rechnungseingang/archiviert"

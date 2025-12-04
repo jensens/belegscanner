@@ -5,7 +5,9 @@
       "Bash(ocrmypdf:*)",
       "Bash(tesseract:*)",
       "Bash(echo:*)",
-      "Bash(PYTHONPATH=src uv run python:*)"
+      "Bash(PYTHONPATH=src uv run python:*)",
+      "Bash(wc:*)",
+      "Bash(uv pip list:*)"
     ],
     "deny": [],
     "ask": []

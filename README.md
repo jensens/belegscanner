@@ -19,7 +19,7 @@ sudo apt install sane-utils tesseract-ocr tesseract-ocr-deu \
     ocrmypdf imagemagick python3-gi gir1.2-adw-1 gir1.2-gtk-4.0
 
 # Projekt installieren
-git clone <repo-url> && cd belegscanner
+git clone https://github.com/jensens/belegscanner.git && cd belegscanner
 uv sync
 
 # GUI starten

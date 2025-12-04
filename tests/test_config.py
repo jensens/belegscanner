@@ -101,3 +101,113 @@ class TestConfigManager:
 
         assert manager.archive_path == "/new/path"
         assert "ABLAGE_PFAD=/new/path" in config_file.read_text()
+
+
+class TestConfigManagerImap:
+    """Test IMAP configuration fields."""
+
+    def test_imap_server_returns_none_when_not_set(self, config_file: Path):
+        """imap_server returns None when not configured."""
+        config_file.write_text("ABLAGE_PFAD=/archive\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.imap_server is None
+
+    def test_imap_server_reads_from_config(self, config_file: Path):
+        """imap_server reads value from config file."""
+        config_file.write_text("ABLAGE_PFAD=/archive\nIMAP_SERVER=imap.example.com\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.imap_server == "imap.example.com"
+
+    def test_imap_server_setter_saves_to_file(self, config_file: Path):
+        """Setting imap_server saves to file."""
+        config_file.write_text("ABLAGE_PFAD=/archive\n")
+        manager = ConfigManager(config_file)
+
+        manager.imap_server = "mail.test.com"
+
+        assert "IMAP_SERVER=mail.test.com" in config_file.read_text()
+
+    def test_imap_user_returns_none_when_not_set(self, config_file: Path):
+        """imap_user returns None when not configured."""
+        config_file.write_text("ABLAGE_PFAD=/archive\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.imap_user is None
+
+    def test_imap_user_reads_from_config(self, config_file: Path):
+        """imap_user reads value from config file."""
+        config_file.write_text("ABLAGE_PFAD=/archive\nIMAP_USER=user@example.com\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.imap_user == "user@example.com"
+
+    def test_imap_user_setter_saves_to_file(self, config_file: Path):
+        """Setting imap_user saves to file."""
+        config_file.write_text("ABLAGE_PFAD=/archive\n")
+        manager = ConfigManager(config_file)
+
+        manager.imap_user = "test@mail.com"
+
+        assert "IMAP_USER=test@mail.com" in config_file.read_text()
+
+    def test_imap_inbox_returns_default_when_not_set(self, config_file: Path):
+        """imap_inbox returns default value when not configured."""
+        config_file.write_text("ABLAGE_PFAD=/archive\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.imap_inbox == "Rechnungseingang"
+
+    def test_imap_inbox_reads_from_config(self, config_file: Path):
+        """imap_inbox reads value from config file."""
+        config_file.write_text("ABLAGE_PFAD=/archive\nIMAP_INBOX=Invoices\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.imap_inbox == "Invoices"
+
+    def test_imap_inbox_setter_saves_to_file(self, config_file: Path):
+        """Setting imap_inbox saves to file."""
+        config_file.write_text("ABLAGE_PFAD=/archive\n")
+        manager = ConfigManager(config_file)
+
+        manager.imap_inbox = "Bills"
+
+        assert "IMAP_INBOX=Bills" in config_file.read_text()
+
+    def test_imap_archive_returns_default_when_not_set(self, config_file: Path):
+        """imap_archive returns default value when not configured."""
+        config_file.write_text("ABLAGE_PFAD=/archive\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.imap_archive == "Rechnungseingang/archiviert"
+
+    def test_imap_archive_reads_from_config(self, config_file: Path):
+        """imap_archive reads value from config file."""
+        config_file.write_text("ABLAGE_PFAD=/archive\nIMAP_ARCHIVE=Invoices/Done\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.imap_archive == "Invoices/Done"
+
+    def test_imap_archive_setter_saves_to_file(self, config_file: Path):
+        """Setting imap_archive saves to file."""
+        config_file.write_text("ABLAGE_PFAD=/archive\n")
+        manager = ConfigManager(config_file)
+
+        manager.imap_archive = "Bills/Processed"
+
+        assert "IMAP_ARCHIVE=Bills/Processed" in config_file.read_text()
+
+    def test_save_preserves_existing_values(self, config_file: Path):
+        """Setting one IMAP field preserves other existing values."""
+        config_file.write_text(
+            "ABLAGE_PFAD=/archive\nIMAP_SERVER=old.server.com\nIMAP_USER=old@user.com\n"
+        )
+        manager = ConfigManager(config_file)
+
+        manager.imap_server = "new.server.com"
+
+        content = config_file.read_text()
+        assert "IMAP_SERVER=new.server.com" in content
+        assert "IMAP_USER=old@user.com" in content
+        assert "ABLAGE_PFAD=/archive" in content

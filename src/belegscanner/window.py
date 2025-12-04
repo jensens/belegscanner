@@ -12,6 +12,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from belegscanner.constants import CATEGORIES
+from belegscanner.email_view import EmailView
 from belegscanner.services import (
     ArchiveService,
     ConfigManager,
@@ -23,20 +24,18 @@ from belegscanner.viewmodel import ScanViewModel
 
 
 class BelegscannerWindow(Adw.ApplicationWindow):
-    """Main application window.
+    """Main application window with Scanner and Email views.
 
     Layout:
-    +------------------------------------------+
-    | Header: [Scannen] [Nochmal]   [Settings] |
-    +------------------------------------------+
-    | Preview (left)  |  Input Panel (right)   |
-    |                 |  - Datum               |
-    |   [Image]       |  - Beschreibung        |
-    |                 |  - Kategorie           |
-    |   [< Page >]    |  - [Speichern]         |
-    +------------------------------------------+
-    | Status Bar                               |
-    +------------------------------------------+
+    +-----------------------------------------------------+
+    | Header: [ViewSwitcher: Scanner | E-Mail] [Settings] |
+    +-----------------------------------------------------+
+    | ViewStack                                           |
+    | - Scanner View (existing)                           |
+    | - Email View (new)                                  |
+    +-----------------------------------------------------+
+    | Status Bar                                          |
+    +-----------------------------------------------------+
     """
 
     def __init__(self, **kwargs):
@@ -74,31 +73,47 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.set_content(main_box)
 
-        # Header bar
+        # Header bar with ViewSwitcher
         header = Adw.HeaderBar()
         main_box.append(header)
 
-        # Scan button
+        # ViewStack for switching between Scanner and Email
+        self.view_stack = Adw.ViewStack()
+        self.view_stack.set_vexpand(True)
+
+        # ViewSwitcher in header (centered)
+        view_switcher = Adw.ViewSwitcher()
+        view_switcher.set_stack(self.view_stack)
+        view_switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
+        header.set_title_widget(view_switcher)
+
+        # Scanner controls (only visible on scanner page)
+        self.scanner_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
         self.scan_btn = Gtk.Button(label="Scannen")
         self.scan_btn.add_css_class("suggested-action")
         self.scan_btn.connect("clicked", self._on_scan_clicked)
-        header.pack_start(self.scan_btn)
+        self.scanner_controls.append(self.scan_btn)
 
-        # Rescan button
         self.rescan_btn = Gtk.Button(label="Nochmal")
         self.rescan_btn.set_sensitive(False)
         self.rescan_btn.connect("clicked", self._on_rescan_clicked)
-        header.pack_start(self.rescan_btn)
+        self.scanner_controls.append(self.rescan_btn)
+
+        header.pack_start(self.scanner_controls)
 
         # Settings button
         settings_btn = Gtk.Button(icon_name="preferences-system-symbolic")
         settings_btn.connect("clicked", self._on_settings_clicked)
         header.pack_end(settings_btn)
 
+        # Scanner page content
+        scanner_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
         # Content: Paned with preview and input
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         paned.set_vexpand(True)
-        main_box.append(paned)
+        scanner_page.append(paned)
 
         # Left: Preview
         self._build_preview_panel(paned)
@@ -106,14 +121,31 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         # Right: Input panel
         self._build_input_panel(paned)
 
-        # Status bar
+        # Scanner status bar
         self.status_bar = Gtk.Label(label="Bereit")
         self.status_bar.set_xalign(0)
         self.status_bar.set_margin_start(12)
         self.status_bar.set_margin_end(12)
         self.status_bar.set_margin_top(6)
         self.status_bar.set_margin_bottom(6)
-        main_box.append(self.status_bar)
+        scanner_page.append(self.status_bar)
+
+        # Add scanner page to ViewStack
+        self.view_stack.add_titled_with_icon(
+            scanner_page, "scanner", "Scanner", "scanner-symbolic"
+        )
+
+        # Email view
+        self.email_view = EmailView(self.config, self.archive, self)
+        self.view_stack.add_titled_with_icon(
+            self.email_view, "email", "E-Mail", "mail-unread-symbolic"
+        )
+
+        # Add ViewStack to main layout
+        main_box.append(self.view_stack)
+
+        # Show/hide scanner controls based on active page
+        self.view_stack.connect("notify::visible-child-name", self._on_page_changed)
 
     def _build_preview_panel(self, paned: Gtk.Paned):
         """Build the preview panel on the left."""
@@ -463,3 +495,8 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         )
         dialog.add_response("ok", "OK")
         dialog.present()
+
+    def _on_page_changed(self, stack, pspec):
+        """Handle page switch between Scanner and Email views."""
+        is_scanner = stack.get_visible_child_name() == "scanner"
+        self.scanner_controls.set_visible(is_scanner)
