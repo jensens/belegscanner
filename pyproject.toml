@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "belegscanner"
+version = "0.1.0"
+description = "Scan receipts and archive them with OCR - GUI and CLI"
+requires-python = ">=3.12"
+dependencies = [
+    "python-dateutil>=2.9.0",
+    "PyGObject>=3.46.0",
+]
+
+# Build-Abhängigkeiten für PyGObject (einmalig):
+# sudo apt install libcairo2-dev libgirepository1.0-dev gir1.2-adw-1 gir1.2-gtk-4.0
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/belegscanner"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.8.0",
+]
+
+[project.gui-scripts]
+belegscanner = "belegscanner.app:main"
+
+[project.scripts]
+scan-beleg = "belegscanner.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]

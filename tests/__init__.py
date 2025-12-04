@@ -1,0 +1,1 @@
+"""Belegscanner tests."""

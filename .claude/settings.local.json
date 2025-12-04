@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scanimage:*)",
+      "Bash(ocrmypdf:*)",
+      "Bash(tesseract:*)",
+      "Bash(echo:*)",
+      "Bash(PYTHONPATH=src uv run python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
