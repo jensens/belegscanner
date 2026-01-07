@@ -570,7 +570,12 @@ class EmailView(Gtk.Box):
                 import time
 
                 print(f"[TIMING] fetch_thread START (cache miss): {time.time()}")
-                email = self.imap.fetch_email(uid, self.config.imap_inbox)
+                # RC5: Capture IMAP reference to avoid race with disconnect
+                imap = self.imap
+                if imap is None:
+                    GLib.idle_add(self._on_email_fetched, None, request_id)
+                    return
+                email = imap.fetch_email(uid, self.config.imap_inbox)
                 print(f"[TIMING] fetch_thread after fetch_email: {time.time()}")
                 GLib.idle_add(self._on_email_fetched, email, request_id)
 
@@ -845,21 +850,24 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         def archive_thread():
             try:
-                # Just move email to archive folder
-                if self.imap:
-                    success = self.imap.move_email(
-                        email.uid,
-                        self.config.imap_inbox,
-                        self.config.imap_archive,
-                    )
-                    if success:
-                        GLib.idle_add(self._on_archive_success, archived_uid)
-                    else:
-                        GLib.idle_add(
-                            self._on_process_failed, "E-Mail konnte nicht verschoben werden."
-                        )
-                else:
+                # RC5: Capture IMAP reference to avoid race with disconnect
+                imap = self.imap
+                if imap is None:
                     GLib.idle_add(self._on_process_failed, "Nicht verbunden.")
+                    return
+
+                # RC6: Use captured archived_uid, not email.uid
+                success = imap.move_email(
+                    archived_uid,
+                    self.config.imap_inbox,
+                    self.config.imap_archive,
+                )
+                if success:
+                    GLib.idle_add(self._on_archive_success, archived_uid)
+                else:
+                    GLib.idle_add(
+                        self._on_process_failed, "E-Mail konnte nicht verschoben werden."
+                    )
             except Exception as e:
                 GLib.idle_add(self._on_process_failed, str(e))
 
@@ -947,6 +955,10 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         def process_thread():
             try:
+                # RC5+RC6: Capture IMAP reference and email UID at start
+                imap = self.imap
+                processed_uid = email.uid
+
                 # Get or create PDF
                 if attachment_idx >= 0 and attachment_idx < len(email.attachments):
                     # Use attachment
@@ -976,13 +988,15 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
                 )
 
                 # Move email to archive folder
-                processed_uid = email.uid  # Capture for callback
-                if self.imap:
-                    self.imap.move_email(
-                        email.uid,
-                        self.config.imap_inbox,
-                        self.config.imap_archive,
-                    )
+                if imap is None:
+                    GLib.idle_add(self._on_process_failed, "Nicht verbunden.")
+                    return
+
+                imap.move_email(
+                    processed_uid,
+                    self.config.imap_inbox,
+                    self.config.imap_archive,
+                )
 
                 GLib.idle_add(self._on_process_success, final_path, is_cc, processed_uid)
 
