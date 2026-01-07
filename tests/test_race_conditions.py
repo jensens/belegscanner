@@ -184,3 +184,58 @@ class TestFetchRequestWithCache:
         # Email 100 should NOT be in cache since request was rejected
         cached = vm.get_cached_email(100)
         assert cached is None
+
+
+class TestBusyCounter:
+    """Test busy counter to prevent multiple operations from interfering."""
+
+    def test_initially_not_busy(self):
+        """ViewModel starts not busy."""
+        vm = EmailViewModel()
+        assert vm.is_busy is False
+
+    def test_increment_makes_busy(self):
+        """Incrementing counter makes busy."""
+        vm = EmailViewModel()
+        vm.increment_busy()
+        assert vm.is_busy is True
+
+    def test_decrement_after_increment_not_busy(self):
+        """Decrementing after increment makes not busy."""
+        vm = EmailViewModel()
+        vm.increment_busy()
+        vm.decrement_busy()
+        assert vm.is_busy is False
+
+    def test_multiple_increments_need_multiple_decrements(self):
+        """Multiple operations need multiple completions."""
+        vm = EmailViewModel()
+        vm.increment_busy()
+        vm.increment_busy()
+        vm.increment_busy()
+
+        vm.decrement_busy()
+        assert vm.is_busy is True
+
+        vm.decrement_busy()
+        assert vm.is_busy is True
+
+        vm.decrement_busy()
+        assert vm.is_busy is False
+
+    def test_decrement_below_zero_safe(self):
+        """Decrementing below zero is safe."""
+        vm = EmailViewModel()
+        vm.decrement_busy()
+        vm.decrement_busy()
+        assert vm.is_busy is False
+        assert vm._busy_count == 0
+
+    def test_reset_clears_counter(self):
+        """Reset clears busy counter."""
+        vm = EmailViewModel()
+        vm.increment_busy()
+        vm.increment_busy()
+        vm.reset_busy()
+        assert vm.is_busy is False
+        assert vm._busy_count == 0

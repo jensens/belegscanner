@@ -41,17 +41,13 @@ class EmailViewModel(GObject.Object):
     is_busy = GObject.Property(type=bool, default=False, nick="is-busy")
     is_connected = GObject.Property(type=bool, default=False, nick="is-connected")
     suggested_date = GObject.Property(type=str, default="", nick="suggested-date")
-    suggested_description = GObject.Property(
-        type=str, default="", nick="suggested-description"
-    )
+    suggested_description = GObject.Property(type=str, default="", nick="suggested-description")
     suggested_currency = GObject.Property(type=str, default="EUR", nick="suggested-currency")
     suggested_amount = GObject.Property(type=str, default="", nick="suggested-amount")
     selected_attachment_index = GObject.Property(
         type=int, default=-1, nick="selected-attachment-index"
     )
-    ki_extraction_running = GObject.Property(
-        type=bool, default=False, nick="ki-extraction-running"
-    )
+    ki_extraction_running = GObject.Property(type=bool, default=False, nick="ki-extraction-running")
 
     def __init__(self):
         """Initialize ViewModel with empty state."""
@@ -67,6 +63,8 @@ class EmailViewModel(GObject.Object):
         # Fetch request tracking to prevent race conditions
         self._fetch_request_id: int = 0
         self._current_fetch_request: int | None = None
+        # Busy counter for tracking multiple concurrent operations
+        self._busy_count: int = 0
 
     @property
     def emails(self) -> list[EmailSummary]:
@@ -114,6 +112,7 @@ class EmailViewModel(GObject.Object):
         Args:
             emails: List of EmailSummary objects.
         """
+
         # Sort by date, handling mixed timezone-aware and naive datetimes
         def sort_key(e):
             dt = e.date
@@ -273,6 +272,32 @@ class EmailViewModel(GObject.Object):
         will be rejected.
         """
         self._current_fetch_request = None
+
+    def increment_busy(self) -> None:
+        """Increment busy counter (start of operation).
+
+        Call this when starting a background operation.
+        The is_busy property will be True while counter > 0.
+        """
+        self._busy_count += 1
+        self.is_busy = self._busy_count > 0
+
+    def decrement_busy(self) -> None:
+        """Decrement busy counter (end of operation).
+
+        Call this when a background operation completes.
+        Safe to call even if counter is already 0.
+        """
+        self._busy_count = max(0, self._busy_count - 1)
+        self.is_busy = self._busy_count > 0
+
+    def reset_busy(self) -> None:
+        """Reset busy counter (for disconnect/error recovery).
+
+        Use this to clear the busy state completely, e.g., on disconnect.
+        """
+        self._busy_count = 0
+        self.is_busy = False
 
     def get_next_email_uid(self, current_index: int) -> int | None:
         """Get UID of next email in filtered list for prefetching.
