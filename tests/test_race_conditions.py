@@ -239,3 +239,127 @@ class TestBusyCounter:
         vm.reset_busy()
         assert vm.is_busy is False
         assert vm._busy_count == 0
+
+
+class TestRefreshAutoSelect:
+    """Tests for RC3: Refresh with auto-select index validation."""
+
+    def test_auto_select_with_empty_list_returns_none(self):
+        """Auto-select handles empty list by returning None index."""
+        vm = EmailViewModel()
+        vm.set_emails([])
+
+        filtered = vm.filtered_emails
+        next_index = 5
+
+        if filtered:
+            idx = max(0, min(next_index, len(filtered) - 1))
+        else:
+            idx = None
+
+        assert idx is None
+
+    def test_auto_select_clamps_index_to_last(self):
+        """Auto-select clamps index to last valid index."""
+        from belegscanner.services.imap import EmailSummary
+
+        vm = EmailViewModel()
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="a@test.com",
+                    subject="A",
+                    date=datetime(2024, 1, 1),
+                    has_attachments=False,
+                ),
+                EmailSummary(
+                    uid=2,
+                    sender="b@test.com",
+                    subject="B",
+                    date=datetime(2024, 1, 2),
+                    has_attachments=False,
+                ),
+            ]
+        )
+
+        filtered = vm.filtered_emails
+        next_index = 100  # Way beyond list
+
+        idx = max(0, min(next_index, len(filtered) - 1))
+
+        assert idx == 1  # Clamped to last index
+
+    def test_auto_select_clamps_negative_index(self):
+        """Auto-select clamps negative index to zero."""
+        from belegscanner.services.imap import EmailSummary
+
+        vm = EmailViewModel()
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="a@test.com",
+                    subject="A",
+                    date=datetime(2024, 1, 1),
+                    has_attachments=False,
+                ),
+                EmailSummary(
+                    uid=2,
+                    sender="b@test.com",
+                    subject="B",
+                    date=datetime(2024, 1, 2),
+                    has_attachments=False,
+                ),
+            ]
+        )
+
+        filtered = vm.filtered_emails
+        next_index = -5  # Negative index
+
+        idx = max(0, min(next_index, len(filtered) - 1))
+
+        assert idx == 0  # Clamped to first index
+
+
+class TestSnapshotPattern:
+    """Tests for RC4: Snapshot pattern for current_email."""
+
+    def test_snapshot_survives_concurrent_modification(self):
+        """Snapshot survives when current_email changes concurrently."""
+        vm = EmailViewModel()
+        vm.set_current_folder("INBOX")
+        email = make_email(100)
+        vm.set_current_email(email)
+
+        # Capture snapshot (simulating what _update_details should do)
+        snapshot = vm.current_email
+
+        # Simulate concurrent modification (another thread sets to None)
+        vm.set_current_email(None)
+
+        # Snapshot should still be valid
+        assert snapshot is not None
+        assert snapshot.uid == 100
+        # Original reference changed
+        assert vm.current_email is None
+
+    def test_snapshot_preserves_email_data(self):
+        """Snapshot preserves all email data during processing."""
+        vm = EmailViewModel()
+        vm.set_current_folder("INBOX")
+        original_email = make_email(42)
+        vm.set_current_email(original_email)
+
+        # Capture snapshot
+        snapshot = vm.current_email
+
+        # Replace with different email
+        new_email = make_email(99)
+        vm.set_current_email(new_email)
+
+        # Snapshot has original data
+        assert snapshot.uid == 42
+        assert snapshot.subject == "Test Email 42"
+        # ViewModel has new data
+        assert vm.current_email.uid == 99

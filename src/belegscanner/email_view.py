@@ -29,6 +29,7 @@ from belegscanner.services import (
     OcrService,
     OllamaService,
 )
+from belegscanner.services.imap import EmailMessage
 
 
 class EmailView(Gtk.Box):
@@ -468,6 +469,7 @@ class EmailView(Gtk.Box):
 
         def refresh_thread():
             import time
+
             print(f"[TIMING] refresh_thread START: {time.time()}")
             emails = self.imap.list_emails(self.config.imap_inbox)
             print(f"[TIMING] refresh_thread after list_emails: {time.time()}")
@@ -479,6 +481,7 @@ class EmailView(Gtk.Box):
     def _on_refresh_complete(self, emails):
         """Handle refresh completion."""
         import time
+
         print(f"[TIMING] _on_refresh_complete START: {time.time()}")
         self.vm.decrement_busy()
         self.vm.status = f"{len(emails)} E-Mail(s)"
@@ -491,11 +494,11 @@ class EmailView(Gtk.Box):
         if self._next_select_index is not None:
             filtered = self.vm.filtered_emails
             if filtered:
-                # Select same index, or last if list is shorter
-                idx = min(self._next_select_index, len(filtered) - 1)
+                # Clamp index to valid range (RC3: handles negative and out-of-bounds)
+                idx = max(0, min(self._next_select_index, len(filtered) - 1))
                 # Select directly - list was just updated, rows are ready
                 row = self.email_list.get_row_at_index(idx)
-                if row:
+                if row is not None:  # Explicit None check
                     print(f"[TIMING] before select_row: {time.time()}")
                     self.email_list.select_row(row)
                     print(f"[TIMING] after select_row: {time.time()}")
@@ -549,6 +552,7 @@ class EmailView(Gtk.Box):
         cached_email = self.vm.get_cached_email(uid)
         if cached_email:
             import time
+
             print(f"[TIMING] Cache HIT for UID {uid}: {time.time()}")
             self.vm.set_current_email(cached_email)
             self._update_details()
@@ -564,6 +568,7 @@ class EmailView(Gtk.Box):
 
             def fetch_thread():
                 import time
+
                 print(f"[TIMING] fetch_thread START (cache miss): {time.time()}")
                 email = self.imap.fetch_email(uid, self.config.imap_inbox)
                 print(f"[TIMING] fetch_thread after fetch_email: {time.time()}")
@@ -580,6 +585,7 @@ class EmailView(Gtk.Box):
             request_id: The request ID from start_fetch_request.
         """
         import time
+
         print(f"[TIMING] _on_email_fetched START: {time.time()}")
         self.vm.decrement_busy()
 
@@ -598,24 +604,27 @@ class EmailView(Gtk.Box):
     def _update_details(self):
         """Update details panel with current email."""
         import time
+
         print(f"[TIMING] _update_details START: {time.time()}")
+        # RC4: Capture snapshot at start to avoid race conditions
+        # Use this snapshot throughout - do NOT access self.vm.current_email again!
         email = self.vm.current_email
         if not email:
             self._clear_details()
             return
 
-        # Update info
+        # Update info (using snapshot)
         self.from_row.set_text(email.sender[:60] or "-")
         self.subject_row.set_text(email.subject[:80] or "-")
         self.email_date_row.set_text(email.date.strftime("%d.%m.%Y %H:%M"))
         print(f"[TIMING] after info rows: {time.time()}")
 
-        # Update email body preview
-        self._update_body_preview()
+        # Update email body preview (pass snapshot)
+        self._update_body_preview(email)
         print(f"[TIMING] after _update_body_preview: {time.time()}")
 
-        # Update attachments
-        self._update_attachment_options()
+        # Update attachments (pass snapshot)
+        self._update_attachment_options(email)
         print(f"[TIMING] after _update_attachment_options: {time.time()}")
 
         # Update suggestions
@@ -628,9 +637,7 @@ class EmailView(Gtk.Box):
             self.amount_row.set_text(display_amount)
             currencies = ["EUR", "USD", "CHF", "GBP"]
             if self.vm.suggested_currency in currencies:
-                self.currency_dropdown.set_selected(
-                    currencies.index(self.vm.suggested_currency)
-                )
+                self.currency_dropdown.set_selected(currencies.index(self.vm.suggested_currency))
         else:
             self.amount_row.set_text("")
             self.currency_dropdown.set_selected(0)  # Default EUR
@@ -649,9 +656,14 @@ class EmailView(Gtk.Box):
         if has_gaps and has_body and self.ollama.is_available():
             self._do_ki_extraction()
 
-    def _update_body_preview(self):
-        """Update email body preview in WebView."""
-        email = self.vm.current_email
+    def _update_body_preview(self, email: EmailMessage | None = None):
+        """Update email body preview in WebView.
+
+        Args:
+            email: Email snapshot to display. Falls back to vm.current_email if None.
+        """
+        if email is None:
+            email = self.vm.current_email
         if not email:
             self.webview.load_html("<html><body></body></html>", None)
             return
@@ -670,8 +682,7 @@ body {{ font-family: sans-serif; font-size: 12px; margin: 8px; }}
         elif email.body_text:
             # Convert plain text to HTML
             escaped_text = (
-                email.body_text
-                .replace("&", "&amp;")
+                email.body_text.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\n", "<br>")
@@ -685,12 +696,14 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 </html>"""
             self.webview.load_html(html, None)
         else:
-            self.webview.load_html(
-                "<html><body><em>Kein Inhalt</em></body></html>", None
-            )
+            self.webview.load_html("<html><body><em>Kein Inhalt</em></body></html>", None)
 
-    def _update_attachment_options(self):
-        """Update attachment radio buttons with open buttons."""
+    def _update_attachment_options(self, email: EmailMessage | None = None):
+        """Update attachment radio buttons with open buttons.
+
+        Args:
+            email: Email snapshot to display. Falls back to vm.current_email if None.
+        """
         # Clear existing
         while True:
             child = self.attachment_group.get_first_child()
@@ -698,7 +711,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
                 break
             self.attachment_group.remove(child)
 
-        email = self.vm.current_email
+        if email is None:
+            email = self.vm.current_email
         if not email:
             return
 
@@ -855,6 +869,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
     def _on_archive_success(self, archived_uid: int):
         """Handle successful archive-only operation."""
         import time
+
         print(f"[TIMING] _on_archive_success START: {time.time()}")
 
         # Remove archived email from cache
@@ -951,16 +966,13 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
                         output_path=pdf_path,
                     )
                     if not success:
-                        GLib.idle_add(
-                            self._on_process_failed, "PDF konnte nicht erstellt werden."
-                        )
+                        GLib.idle_add(self._on_process_failed, "PDF konnte nicht erstellt werden.")
                         return
 
                 # Archive with amount
                 self.archive.base_path = self.config.archive_path
                 final_path = self.archive.archive(
-                    pdf_path, date, desc, category, is_cc,
-                    currency=currency, amount=amount
+                    pdf_path, date, desc, category, is_cc, currency=currency, amount=amount
                 )
 
                 # Move email to archive folder
@@ -1039,6 +1051,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         self._prefetch_pending_uid = uid
         import time
+
         print(f"[TIMING] _start_prefetch for UID {uid}: {time.time()}")
 
         def prefetch_thread():
@@ -1061,6 +1074,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             email: Prefetched EmailMessage.
         """
         import time
+
         print(f"[TIMING] _on_prefetch_complete for UID {email.uid}: {time.time()}")
         self.vm.cache_email(email)
         self._prefetch_pending_uid = None
@@ -1079,10 +1093,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         if not self.ollama.is_available():
             self._show_error(
                 "Ollama nicht verfügbar",
-                "Bitte Ollama starten:\n\n"
-                "ollama serve\n\n"
-                "Modell installieren:\n\n"
-                "ollama pull phi3",
+                "Bitte Ollama starten:\n\nollama serve\n\nModell installieren:\n\nollama pull phi3",
             )
             return
 
