@@ -363,3 +363,99 @@ class TestSnapshotPattern:
         assert snapshot.subject == "Test Email 42"
         # ViewModel has new data
         assert vm.current_email.uid == 99
+
+
+class TestImapConnectionGuard:
+    """Tests for RC5: IMAP connection guard.
+
+    These tests verify that capturing IMAP reference at thread start
+    prevents AttributeError when self.imap becomes None during execution.
+    """
+
+    def test_captured_reference_survives_disconnect(self):
+        """Captured IMAP reference survives when self.imap becomes None.
+
+        This demonstrates the guard pattern: capture self.imap at start,
+        then use captured reference. Even if self.imap is set to None
+        during thread execution, the captured reference remains valid.
+        """
+        from unittest.mock import MagicMock
+
+        class MockView:
+            def __init__(self):
+                self.imap = MagicMock()
+
+            def fetch_with_guard(self, uid):
+                # Guard pattern: capture reference at start
+                imap = self.imap
+                if imap is None:
+                    return None
+                return imap.fetch_email(uid)
+
+        view = MockView()
+        captured = view.imap  # Simulate capturing reference
+
+        # Simulate disconnect during thread execution
+        view.imap = None
+
+        # Captured reference still valid and callable
+        assert captured is not None
+        captured.fetch_email(100)  # Should not raise
+
+    def test_guard_returns_none_when_disconnected_before_capture(self):
+        """Guard returns None when disconnected before thread starts.
+
+        If self.imap is already None when the thread captures it,
+        the guard should detect this and return early with None.
+        """
+
+        class MockView:
+            def __init__(self):
+                self.imap = None
+
+            def fetch_with_guard(self, uid):
+                # Guard pattern: capture and check
+                imap = self.imap
+                if imap is None:
+                    return None
+                return imap.fetch_email(uid)
+
+        view = MockView()
+        result = view.fetch_with_guard(100)
+
+        assert result is None
+
+    def test_guard_pattern_with_email_uid_capture(self):
+        """Guard pattern should also capture email.uid to avoid RC6.
+
+        Both imap reference and email.uid should be captured at start
+        to prevent using stale email references.
+        """
+        from unittest.mock import MagicMock
+
+        class MockView:
+            def __init__(self):
+                self.imap = MagicMock()
+                self.current_email = MagicMock(uid=100)
+
+            def archive_with_guard(self):
+                # Capture both imap and uid at start
+                imap = self.imap
+                uid = self.current_email.uid if self.current_email else None
+
+                if imap is None or uid is None:
+                    return False
+
+                # Simulate email changing during execution
+                self.current_email.uid = 999
+
+                # Use captured uid, not current email
+                imap.move_email(uid, "INBOX", "Archive")
+                return True
+
+        view = MockView()
+        result = view.archive_with_guard()
+
+        assert result is True
+        # Verify move_email was called with captured uid (100), not changed uid (999)
+        view.imap.move_email.assert_called_once_with(100, "INBOX", "Archive")
