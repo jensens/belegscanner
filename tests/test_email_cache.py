@@ -2,10 +2,8 @@
 
 from datetime import datetime
 
-import pytest
-
 from belegscanner.services.email_cache import EmailCache
-from belegscanner.services.imap import EmailAttachment, EmailMessage
+from belegscanner.services.imap import EmailMessage
 
 
 def make_email(uid: int, subject: str = "Test") -> EmailMessage:

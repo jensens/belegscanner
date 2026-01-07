@@ -1,9 +1,8 @@
 """Tests for PdfService."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
 import subprocess
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from belegscanner.services.pdf import PdfService
 
@@ -100,7 +99,9 @@ class TestCreatePdf:
     @patch("belegscanner.services.pdf.os.path.exists")
     @patch("belegscanner.services.pdf.os.remove")
     @patch("belegscanner.services.pdf.subprocess.run")
-    def test_cleans_up_temp_pdf(self, mock_run: MagicMock, mock_remove: MagicMock, mock_exists: MagicMock, tmp_path: Path):
+    def test_cleans_up_temp_pdf(
+        self, mock_run: MagicMock, mock_remove: MagicMock, mock_exists: MagicMock, tmp_path: Path
+    ):
         """Remove temporary PDF after ocrmypdf processing."""
         service = PdfService()
         page = tmp_path / "page.png"

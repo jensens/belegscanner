@@ -219,10 +219,10 @@ class ImapService:
                     if not is_attachment and filename:
                         filename_lower = filename.lower()
                         attachment_extensions = (".pdf", ".zip", ".doc", ".docx", ".xls", ".xlsx")
-                        is_attachment = (
-                            content_type in ("application/pdf", "application/octet-stream")
-                            or filename_lower.endswith(attachment_extensions)
-                        )
+                        is_attachment = content_type in (
+                            "application/pdf",
+                            "application/octet-stream",
+                        ) or filename_lower.endswith(attachment_extensions)
 
                     if is_attachment and filename:
                         filename = self._decode_header(filename)
@@ -325,9 +325,7 @@ class ImapService:
             summaries = []
             ids_str = b",".join(email_ids).decode()
 
-            status, data = self._connection.fetch(
-                ids_str, "(UID ENVELOPE BODYSTRUCTURE)"
-            )
+            status, data = self._connection.fetch(ids_str, "(UID ENVELOPE BODYSTRUCTURE)")
             if status != "OK":
                 return []
 
@@ -375,9 +373,7 @@ class ImapService:
                 date = datetime.now()
 
             # Extract subject (second quoted string after date)
-            subject_match = re.search(
-                r'ENVELOPE \("[^"]*" "([^"]*)"', data_str
-            )
+            subject_match = re.search(r'ENVELOPE \("[^"]*" "([^"]*)"', data_str)
             subject = subject_match.group(1) if subject_match else "(Kein Betreff)"
 
             # Extract sender (from the FROM field)

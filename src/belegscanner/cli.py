@@ -33,21 +33,25 @@ Beispiel:
         """,
     )
     parser.add_argument(
-        "-k", "--kategorie",
+        "-k",
+        "--kategorie",
         choices=["1", "2", "3", "4"],
         required=True,
         help="Ablage-Kategorie (1-4)",
     )
     parser.add_argument(
-        "-d", "--datum",
+        "-d",
+        "--datum",
         help="Belegdatum (TT.MM.JJJJ), default: aus OCR",
     )
     parser.add_argument(
-        "-b", "--beschreibung",
+        "-b",
+        "--beschreibung",
         help="Beschreibung/Lieferant, default: aus OCR",
     )
     parser.add_argument(
-        "-s", "--seiten",
+        "-s",
+        "--seiten",
         type=int,
         default=1,
         help="Anzahl Seiten zu scannen (default: 1)",
@@ -67,6 +71,7 @@ Beispiel:
     # Start GUI if requested
     if args.gui:
         from belegscanner.app import main as gui_main
+
         return gui_main()
 
     # Initialize services

@@ -47,7 +47,8 @@ class PdfService:
             subprocess.run(
                 [
                     "ocrmypdf",
-                    "--language", self.language,
+                    "--language",
+                    self.language,
                     "--skip-text",
                     "--deskew",
                     "--clean",

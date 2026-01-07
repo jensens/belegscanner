@@ -3,8 +3,6 @@
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from belegscanner.services.imap import (
     EmailAttachment,
     EmailMessage,
@@ -155,7 +153,7 @@ class TestImapServiceListEmails:
                         b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                         b'"Ihre Rechnung #12345" '
                         b'((NIL NIL "rechnung" "amazon.de")) '
-                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b"NIL NIL NIL NIL NIL NIL NIL) "
                         b'BODYSTRUCTURE ("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10))',
                     ),
                     b")",
@@ -163,7 +161,7 @@ class TestImapServiceListEmails:
                         b'2 (UID 102 ENVELOPE ("01-Nov-2024 09:00:00 +0100" '
                         b'"Monatsrechnung November" '
                         b'((NIL NIL "service" "telekom.de")) '
-                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b"NIL NIL NIL NIL NIL NIL NIL) "
                         b'BODYSTRUCTURE ("MULTIPART" "MIXED"))',
                     ),
                     b")",
@@ -295,7 +293,7 @@ class TestImapServiceFetchEmail:
                 b"Subject: Ihre Rechnung\r\n"
                 b"Date: 23 Nov 2025 13:38:00 +0100\r\n"
                 b"Message-ID: <test@example.com>\r\n"
-                b"Content-Type: multipart/mixed; boundary=\"boundary123\"\r\n"
+                b'Content-Type: multipart/mixed; boundary="boundary123"\r\n'
                 b"\r\n"
                 b"--boundary123\r\n"
                 b"Content-Type: text/html; charset=utf-8\r\n"
@@ -358,20 +356,14 @@ class TestImapServiceMoveEmail:
 
             service = ImapService("imap.example.com")
             service.connect("user@example.com", "password123")
-            result = service.move_email(
-                101, "Rechnungseingang", "Rechnungseingang/archiviert"
-            )
+            result = service.move_email(101, "Rechnungseingang", "Rechnungseingang/archiviert")
 
             assert result is True
             # Verify COPY was called
-            copy_calls = [
-                c for c in mock_conn.uid.call_args_list if c[0][0] == "COPY"
-            ]
+            copy_calls = [c for c in mock_conn.uid.call_args_list if c[0][0] == "COPY"]
             assert len(copy_calls) == 1
             # Verify STORE (delete flag) was called
-            store_calls = [
-                c for c in mock_conn.uid.call_args_list if c[0][0] == "STORE"
-            ]
+            store_calls = [c for c in mock_conn.uid.call_args_list if c[0][0] == "STORE"]
             assert len(store_calls) == 1
 
     def test_move_email_returns_false_on_failure(self):
@@ -385,9 +377,7 @@ class TestImapServiceMoveEmail:
 
             service = ImapService("imap.example.com")
             service.connect("user@example.com", "password123")
-            result = service.move_email(
-                101, "Rechnungseingang", "Rechnungseingang/archiviert"
-            )
+            result = service.move_email(101, "Rechnungseingang", "Rechnungseingang/archiviert")
 
             assert result is False
 
@@ -395,9 +385,7 @@ class TestImapServiceMoveEmail:
         """move_email() returns False when not connected."""
         service = ImapService("imap.example.com")
 
-        result = service.move_email(
-            101, "Rechnungseingang", "Rechnungseingang/archiviert"
-        )
+        result = service.move_email(101, "Rechnungseingang", "Rechnungseingang/archiviert")
 
         assert result is False
 
@@ -420,7 +408,7 @@ class TestHasAttachmentsDetection:
                         b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                         b'"Ihre Rechnung" '
                         b'((NIL NIL "rechnung" "amazon.de")) '
-                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b"NIL NIL NIL NIL NIL NIL NIL) "
                         b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                         b'("APPLICATION" "PDF" ("NAME" "Rechnung.pdf") NIL NIL "BASE64" 5000 NIL '
                         b'("ATTACHMENT" ("FILENAME" "Rechnung.pdf")) NIL NIL) "MIXED"))',
@@ -452,7 +440,7 @@ class TestHasAttachmentsDetection:
                         b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                         b'"Newsletter" '
                         b'((NIL NIL "news" "example.com")) '
-                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b"NIL NIL NIL NIL NIL NIL NIL) "
                         b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                         b'("TEXT" "HTML" NIL NIL NIL "QUOTED-PRINTABLE" 500 20 NIL NIL NIL NIL) "ALTERNATIVE"))',
                     ),
@@ -483,7 +471,7 @@ class TestHasAttachmentsDetection:
                         b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                         b'"Kurze Nachricht" '
                         b'((NIL NIL "sender" "example.com")) '
-                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b"NIL NIL NIL NIL NIL NIL NIL) "
                         b'BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 50 5 NIL NIL NIL NIL))',
                     ),
                     b")",
@@ -513,7 +501,7 @@ class TestHasAttachmentsDetection:
                         b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                         b'"Email mit Bild" '
                         b'((NIL NIL "sender" "example.com")) '
-                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b"NIL NIL NIL NIL NIL NIL NIL) "
                         b'BODYSTRUCTURE (("TEXT" "HTML" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                         b'("IMAGE" "PNG" ("NAME" "logo.png") NIL NIL "BASE64" 5000 NIL '
                         b'("INLINE" ("FILENAME" "logo.png")) NIL NIL) "RELATED"))',
@@ -545,7 +533,7 @@ class TestHasAttachmentsDetection:
                         b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
                         b'"Ihre Rechnung" '
                         b'((NIL NIL "support" "domaindiscount24.com")) '
-                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b"NIL NIL NIL NIL NIL NIL NIL) "
                         b'BODYSTRUCTURE (("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                         b'("APPLICATION" "OCTET-STREAM" NIL NIL NIL "BASE64" 5000 NIL '
                         b'(attachment ("FILENAME" "2025172897.pdf")) NIL NIL) "MIXED"))',
@@ -577,7 +565,7 @@ class TestHasAttachmentsDetection:
                         b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
                         b'"Ihre Rechnung" '
                         b'((NIL NIL "support" "example.com")) '
-                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b"NIL NIL NIL NIL NIL NIL NIL) "
                         b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                         b'("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 5000 NIL '
                         b'NIL NIL NIL) "MIXED"))',

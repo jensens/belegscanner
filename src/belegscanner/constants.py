@@ -10,8 +10,8 @@ DEFAULT_CONFIG_PATH = Path.home() / ".config" / "belegscanner.conf"
 CATEGORIES = {
     "1": ("Kassa", False),
     "2": ("ER", False),
-    "3": ("ER-KKJK", True),   # Kreditkarte JK -> +1 Monat
-    "4": ("ER-KKCB", True),   # Kreditkarte CB -> +1 Monat
+    "3": ("ER-KKJK", True),  # Kreditkarte JK -> +1 Monat
+    "4": ("ER-KKCB", True),  # Kreditkarte CB -> +1 Monat
 }
 
 # Scanner settings
@@ -31,24 +31,73 @@ DEFAULT_IMAP_ARCHIVE = "Rechnungseingang/archiviert"
 # Terms that don't identify a vendor (blacklisted)
 VENDOR_BLACKLIST = {
     # Deutsche Begriffe (Rechnungs-bezogen)
-    "rechnung", "bestellung", "beleg", "quittung", "lieferung",
-    "zahlung", "mahnung", "erinnerung", "benachrichtigung",
+    "rechnung",
+    "bestellung",
+    "beleg",
+    "quittung",
+    "lieferung",
+    "zahlung",
+    "mahnung",
+    "erinnerung",
+    "benachrichtigung",
     # Deutsche Begriffe (allgemein)
-    "ihre", "ihr", "ihre", "wichtige", "wichtig", "mitteilung",
-    "neue", "aktualisierung", "bestätigung",
+    "ihre",
+    "ihr",
+    "ihre",
+    "wichtige",
+    "wichtig",
+    "mitteilung",
+    "neue",
+    "aktualisierung",
+    "bestätigung",
     # Englische Begriffe (Rechnungs-bezogen)
-    "invoice", "receipt", "billing", "order", "payment",
-    "notification", "confirmation", "reminder", "statement",
+    "invoice",
+    "receipt",
+    "billing",
+    "order",
+    "payment",
+    "notification",
+    "confirmation",
+    "reminder",
+    "statement",
     # Englische Begriffe (allgemein)
-    "your", "the", "new", "update", "important", "dear",
+    "your",
+    "the",
+    "new",
+    "update",
+    "important",
+    "dear",
     # Generische E-Mail-Begriffe
-    "noreply", "no-reply", "donotreply", "do-not-reply",
-    "newsletter", "info", "service", "support", "kontakt", "contact",
-    "mail", "email", "team", "admin", "system", "auto",
+    "noreply",
+    "no-reply",
+    "donotreply",
+    "do-not-reply",
+    "newsletter",
+    "info",
+    "service",
+    "support",
+    "kontakt",
+    "contact",
+    "mail",
+    "email",
+    "team",
+    "admin",
+    "system",
+    "auto",
     # Generische Domains
-    "gmail", "outlook", "yahoo", "hotmail", "gmx", "web", "posteo",
+    "gmail",
+    "outlook",
+    "yahoo",
+    "hotmail",
+    "gmx",
+    "web",
+    "posteo",
     # Zahlungsdienstleister (nicht der eigentliche Lieferant)
-    "paypal", "stripe", "klarna", "giropay", "sofort",
+    "paypal",
+    "stripe",
+    "klarna",
+    "giropay",
+    "sofort",
     # Eigene Firma
     "kleinundpartner",
 }

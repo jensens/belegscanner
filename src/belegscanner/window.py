@@ -138,9 +138,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         scanner_page.append(self.status_bar)
 
         # Add scanner page to ViewStack
-        self.view_stack.add_titled_with_icon(
-            scanner_page, "scanner", "Scanner", "scanner-symbolic"
-        )
+        self.view_stack.add_titled_with_icon(scanner_page, "scanner", "Scanner", "scanner-symbolic")
 
         # Email view
         self.email_view = EmailView(self.config, self.archive, self)
@@ -408,10 +406,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         if not self.ollama.is_available():
             self._show_error(
                 "Ollama nicht verfügbar",
-                "Bitte Ollama starten:\n\n"
-                "ollama serve\n\n"
-                "Modell installieren:\n\n"
-                "ollama pull phi3",
+                "Bitte Ollama starten:\n\nollama serve\n\nModell installieren:\n\nollama pull phi3",
             )
             return
 
@@ -563,8 +558,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
                 # Archive with amount
                 self.archive.base_path = self.config.archive_path
                 final_path = self.archive.archive(
-                    pdf_path, date, desc, category, is_cc,
-                    currency=currency, amount=amount
+                    pdf_path, date, desc, category, is_cc, currency=currency, amount=amount
                 )
 
                 GLib.idle_add(self._on_save_complete, final_path, is_cc)

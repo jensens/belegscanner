@@ -1,10 +1,9 @@
 """Tests for OllamaService."""
 
-import pytest
-from unittest.mock import patch, MagicMock
 import json
+from unittest.mock import MagicMock, patch
 
-from belegscanner.services.ollama import OllamaService, ExtractionResult
+from belegscanner.services.ollama import ExtractionResult, OllamaService
 
 
 class TestIsAvailable:
@@ -25,6 +24,7 @@ class TestIsAvailable:
     def test_returns_false_when_connection_refused(self, mock_urlopen: MagicMock):
         """Return False when Ollama server not running."""
         from urllib.error import URLError
+
         mock_urlopen.side_effect = URLError("Connection refused")
 
         service = OllamaService()
@@ -35,6 +35,7 @@ class TestIsAvailable:
     def test_returns_false_on_timeout(self, mock_urlopen: MagicMock):
         """Return False when request times out."""
         import socket
+
         mock_urlopen.side_effect = socket.timeout("timed out")
 
         service = OllamaService()
@@ -49,9 +50,11 @@ class TestExtract:
     def test_extracts_vendor_amount_currency(self, mock_urlopen: MagicMock):
         """Extract vendor, amount, and currency from OCR text."""
         mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "response": '{"vendor": "REWE", "amount": "27.07", "currency": "EUR", "date": "15.11.2024"}'
-        }).encode()
+        mock_response.read.return_value = json.dumps(
+            {
+                "response": '{"vendor": "REWE", "amount": "27.07", "currency": "EUR", "date": "15.11.2024"}'
+            }
+        ).encode()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
@@ -68,9 +71,9 @@ class TestExtract:
     def test_handles_partial_extraction(self, mock_urlopen: MagicMock):
         """Handle when only some fields are extracted."""
         mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "response": '{"vendor": "Amazon", "amount": null, "currency": null, "date": null}'
-        }).encode()
+        mock_response.read.return_value = json.dumps(
+            {"response": '{"vendor": "Amazon", "amount": null, "currency": null, "date": null}'}
+        ).encode()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
@@ -86,6 +89,7 @@ class TestExtract:
     def test_handles_ollama_not_running(self, mock_urlopen: MagicMock):
         """Return empty result when Ollama not available."""
         from urllib.error import URLError
+
         mock_urlopen.side_effect = URLError("Connection refused")
 
         service = OllamaService()
@@ -100,9 +104,9 @@ class TestExtract:
     def test_handles_malformed_json_response(self, mock_urlopen: MagicMock):
         """Handle non-JSON response from Ollama."""
         mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "response": "I cannot parse this text properly."
-        }).encode()
+        mock_response.read.return_value = json.dumps(
+            {"response": "I cannot parse this text properly."}
+        ).encode()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
@@ -117,9 +121,11 @@ class TestExtract:
     def test_handles_json_in_markdown_code_block(self, mock_urlopen: MagicMock):
         """Handle JSON wrapped in markdown code block."""
         mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "response": '```json\n{"vendor": "Bauhaus", "amount": "50.00", "currency": "EUR", "date": null}\n```'
-        }).encode()
+        mock_response.read.return_value = json.dumps(
+            {
+                "response": '```json\n{"vendor": "Bauhaus", "amount": "50.00", "currency": "EUR", "date": null}\n```'
+            }
+        ).encode()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
@@ -135,9 +141,9 @@ class TestExtract:
     def test_sends_correct_prompt(self, mock_urlopen: MagicMock):
         """Send OCR text with extraction prompt to Ollama."""
         mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "response": '{"vendor": null, "amount": null, "currency": null, "date": null}'
-        }).encode()
+        mock_response.read.return_value = json.dumps(
+            {"response": '{"vendor": null, "amount": null, "currency": null, "date": null}'}
+        ).encode()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
@@ -158,9 +164,9 @@ class TestExtract:
     def test_uses_configured_model(self, mock_urlopen: MagicMock):
         """Use configured model name in request."""
         mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "response": '{"vendor": null, "amount": null, "currency": null, "date": null}'
-        }).encode()
+        mock_response.read.return_value = json.dumps(
+            {"response": '{"vendor": null, "amount": null, "currency": null, "date": null}'}
+        ).encode()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
@@ -196,12 +202,7 @@ class TestExtractionResult:
 
     def test_creates_with_all_fields(self):
         """Create result with all fields."""
-        result = ExtractionResult(
-            vendor="REWE",
-            amount="27.07",
-            currency="EUR",
-            date="15.11.2024"
-        )
+        result = ExtractionResult(vendor="REWE", amount="27.07", currency="EUR", date="15.11.2024")
 
         assert result.vendor == "REWE"
         assert result.amount == "27.07"
@@ -210,12 +211,7 @@ class TestExtractionResult:
 
     def test_creates_with_none_fields(self):
         """Create result with None fields."""
-        result = ExtractionResult(
-            vendor=None,
-            amount=None,
-            currency=None,
-            date=None
-        )
+        result = ExtractionResult(vendor=None, amount=None, currency=None, date=None)
 
         assert result.vendor is None
         assert result.amount is None
