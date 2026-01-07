@@ -379,7 +379,7 @@ class EmailView(Gtk.Box):
 
     def _connect(self, server: str, user: str, password: str):
         """Connect to IMAP server."""
-        self.vm.is_busy = True
+        self.vm.increment_busy()
         self.vm.status = "Verbinde..."
 
         # Store credentials for prefetch connection
@@ -412,7 +412,7 @@ class EmailView(Gtk.Box):
     def _on_connect_success(self, emails):
         """Handle successful connection."""
         self.vm.is_connected = True
-        self.vm.is_busy = False
+        self.vm.decrement_busy()
         self.vm.status = f"Verbunden - {len(emails)} E-Mail(s)"
 
         self.connect_btn.set_label("Trennen")
@@ -426,7 +426,7 @@ class EmailView(Gtk.Box):
     def _on_connect_failed(self, error_msg: str = ""):
         """Handle connection failure."""
         self.vm.is_connected = False
-        self.vm.is_busy = False
+        self.vm.decrement_busy()
         self.vm.status = "Verbindung fehlgeschlagen"
 
         # Provide helpful error message
@@ -463,7 +463,7 @@ class EmailView(Gtk.Box):
         if not self.imap or not self.vm.is_connected:
             return
 
-        self.vm.is_busy = True
+        self.vm.increment_busy()
         self.vm.status = "Aktualisiere..."
 
         def refresh_thread():
@@ -480,7 +480,7 @@ class EmailView(Gtk.Box):
         """Handle refresh completion."""
         import time
         print(f"[TIMING] _on_refresh_complete START: {time.time()}")
-        self.vm.is_busy = False
+        self.vm.decrement_busy()
         self.vm.status = f"{len(emails)} E-Mail(s)"
         self.vm.set_emails(emails)
         print(f"[TIMING] after set_emails: {time.time()}")
@@ -557,29 +557,37 @@ class EmailView(Gtk.Box):
 
         # Cache miss - fetch from server
         if self.imap and self.vm.is_connected:
-            self.vm.is_busy = True
+            self.vm.increment_busy()
             self.vm.status = "Lade E-Mail..."
+            # Start fetch request tracking to prevent race conditions
+            request_id = self.vm.start_fetch_request(uid)
 
             def fetch_thread():
                 import time
                 print(f"[TIMING] fetch_thread START (cache miss): {time.time()}")
                 email = self.imap.fetch_email(uid, self.config.imap_inbox)
                 print(f"[TIMING] fetch_thread after fetch_email: {time.time()}")
-                GLib.idle_add(self._on_email_fetched, email)
+                GLib.idle_add(self._on_email_fetched, email, request_id)
 
             thread = threading.Thread(target=fetch_thread, daemon=True)
             thread.start()
 
-    def _on_email_fetched(self, email):
-        """Handle email fetch completion."""
+    def _on_email_fetched(self, email, request_id: int):
+        """Handle email fetch completion.
+
+        Args:
+            email: The fetched EmailMessage or None on error.
+            request_id: The request ID from start_fetch_request.
+        """
         import time
         print(f"[TIMING] _on_email_fetched START: {time.time()}")
-        self.vm.is_busy = False
+        self.vm.decrement_busy()
 
         if email:
-            # Store in cache for future access
-            self.vm.cache_email(email)
-            self.vm.set_current_email(email)
+            # Complete the fetch request - rejected if user selected another email
+            if not self.vm.complete_fetch_request(request_id, email):
+                print(f"[TIMING] Stale request {request_id} rejected")
+                return  # Stale request, ignore
             self._update_details()
             self.vm.status = "Bereit"
         else:
@@ -816,7 +824,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             if next_uid and not self.vm.get_cached_email(next_uid):
                 self._start_prefetch(next_uid)
 
-        self.vm.is_busy = True
+        self.vm.increment_busy()
         self.vm.status = "Archiviere..."
 
         archived_uid = email.uid  # Capture for closure
@@ -919,7 +927,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
                 self._start_prefetch(next_uid)
 
         # Process in background
-        self.vm.is_busy = True
+        self.vm.increment_busy()
         self.vm.status = "Verarbeite..."
 
         def process_thread():
@@ -989,7 +997,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
     def _on_process_failed(self, error: str):
         """Handle processing failure."""
-        self.vm.is_busy = False
+        self.vm.decrement_busy()
         self.vm.status = "Verarbeitung fehlgeschlagen"
         self._show_error("Fehler", error)
 
