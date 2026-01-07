@@ -211,3 +211,50 @@ class TestConfigManagerImap:
         assert "IMAP_SERVER=new.server.com" in content
         assert "IMAP_USER=old@user.com" in content
         assert "ABLAGE_PFAD=/archive" in content
+
+
+class TestConfigManagerIsEmailConfigured:
+    """Test is_email_configured() method."""
+
+    def test_returns_false_when_no_config_file(self, config_file: Path):
+        """is_email_configured returns False when config file doesn't exist."""
+        manager = ConfigManager(config_file)
+
+        assert manager.is_email_configured() is False
+
+    def test_returns_false_when_only_server_set(self, config_file: Path):
+        """is_email_configured returns False when only server is set."""
+        config_file.write_text("IMAP_SERVER=imap.example.com\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.is_email_configured() is False
+
+    def test_returns_false_when_only_user_set(self, config_file: Path):
+        """is_email_configured returns False when only user is set."""
+        config_file.write_text("IMAP_USER=user@example.com\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.is_email_configured() is False
+
+    def test_returns_true_when_server_and_user_set(self, config_file: Path):
+        """is_email_configured returns True when server and user are set."""
+        config_file.write_text(
+            "IMAP_SERVER=imap.example.com\nIMAP_USER=user@example.com\n"
+        )
+        manager = ConfigManager(config_file)
+
+        assert manager.is_email_configured() is True
+
+    def test_returns_false_when_server_empty(self, config_file: Path):
+        """is_email_configured returns False when server is empty string."""
+        config_file.write_text("IMAP_SERVER=\nIMAP_USER=user@example.com\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.is_email_configured() is False
+
+    def test_returns_false_when_user_empty(self, config_file: Path):
+        """is_email_configured returns False when user is empty string."""
+        config_file.write_text("IMAP_SERVER=imap.example.com\nIMAP_USER=\n")
+        manager = ConfigManager(config_file)
+
+        assert manager.is_email_configured() is False

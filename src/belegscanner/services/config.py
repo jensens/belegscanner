@@ -172,3 +172,13 @@ class ConfigManager:
     def imap_archive(self, value: str) -> None:
         """Set IMAP archive folder name."""
         self._set_value("IMAP_ARCHIVE", value)
+
+    def is_email_configured(self) -> bool:
+        """Check if email configuration is complete.
+
+        Returns:
+            True if both IMAP server and user are set and non-empty.
+        """
+        server = self.imap_server
+        user = self.imap_user
+        return bool(server and user)

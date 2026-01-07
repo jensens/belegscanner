@@ -91,6 +91,9 @@ class EmailView(Gtk.Box):
         # Build UI
         self._build_ui()
 
+        # Auto-connect when widget becomes visible
+        self.connect("realize", self._on_realize)
+
     def _build_ui(self):
         """Build the user interface."""
         # Toolbar
@@ -292,6 +295,41 @@ class EmailView(Gtk.Box):
 
         paned.set_end_child(details_box)
         paned.set_resize_end_child(False)
+
+    def _on_realize(self, widget):
+        """Handle widget realize - try auto-connect."""
+        # Use idle_add to ensure UI is fully ready
+        GLib.idle_add(self.try_auto_connect)
+
+    def try_auto_connect(self) -> bool:
+        """Try to auto-connect if configuration is complete.
+
+        Checks if email configuration is complete and password is available,
+        then initiates connection automatically.
+
+        Returns:
+            True if auto-connect was initiated, False otherwise.
+        """
+        # Don't auto-connect if already connected or connecting
+        if self.vm.is_connected or self.vm.is_busy:
+            return False
+
+        # Check if configuration is complete
+        if not self.config.is_email_configured():
+            self.vm.status = "E-Mail nicht konfiguriert"
+            return False
+
+        # Check if password is available
+        user = self.config.imap_user
+        password = self.credential.get_password(user)
+        if not password:
+            self.vm.status = "Kein Passwort gespeichert"
+            return False
+
+        # All conditions met - initiate connection
+        server = self.config.imap_server
+        self._connect(server, user, password)
+        return True
 
     def _on_status_changed(self, vm, pspec):
         """Update status bar."""
