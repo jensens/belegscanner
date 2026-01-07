@@ -141,3 +141,123 @@ class TestArchive:
         )
 
         assert isinstance(result, Path)
+
+
+class TestArchiveWithAmount:
+    """Test archiving with amount in filename."""
+
+    def test_filename_includes_amount_eur(self, archive_dir: Path):
+        """Filename includes EUR amount."""
+        service = ArchiveService(archive_dir)
+
+        source = archive_dir / "temp.pdf"
+        source.write_text("test content")
+
+        date = datetime(2024, 11, 15)
+        result = service.archive(
+            source, date, "rewe", "ER",
+            is_credit_card=False, currency="EUR", amount="27.07"
+        )
+
+        assert result.name == "2024-11-15_EUR27-07_rewe.pdf"
+
+    def test_filename_includes_amount_usd(self, archive_dir: Path):
+        """Filename includes USD amount."""
+        service = ArchiveService(archive_dir)
+
+        source = archive_dir / "temp.pdf"
+        source.write_text("test content")
+
+        date = datetime(2024, 11, 15)
+        result = service.archive(
+            source, date, "hotel", "ER",
+            is_credit_card=False, currency="USD", amount="150.00"
+        )
+
+        assert result.name == "2024-11-15_USD150-00_hotel.pdf"
+
+    def test_filename_includes_amount_chf(self, archive_dir: Path):
+        """Filename includes CHF amount."""
+        service = ArchiveService(archive_dir)
+
+        source = archive_dir / "temp.pdf"
+        source.write_text("test content")
+
+        date = datetime(2024, 3, 5)
+        result = service.archive(
+            source, date, "migros", "Kassa",
+            is_credit_card=False, currency="CHF", amount="89.50"
+        )
+
+        assert result.name == "2024-03-05_CHF89-50_migros.pdf"
+
+    def test_amount_replaces_dot_with_dash(self, archive_dir: Path):
+        """Amount decimal point is replaced with dash."""
+        service = ArchiveService(archive_dir)
+
+        source = archive_dir / "temp.pdf"
+        source.write_text("test content")
+
+        date = datetime(2024, 11, 15)
+        result = service.archive(
+            source, date, "test", "ER",
+            is_credit_card=False, currency="EUR", amount="1234.56"
+        )
+
+        assert result.name == "2024-11-15_EUR1234-56_test.pdf"
+
+    def test_amount_whole_number(self, archive_dir: Path):
+        """Amount with .00 is formatted correctly."""
+        service = ArchiveService(archive_dir)
+
+        source = archive_dir / "temp.pdf"
+        source.write_text("test content")
+
+        date = datetime(2024, 11, 15)
+        result = service.archive(
+            source, date, "test", "ER",
+            is_credit_card=False, currency="EUR", amount="100.00"
+        )
+
+        assert result.name == "2024-11-15_EUR100-00_test.pdf"
+
+    def test_handles_duplicate_with_amount(self, archive_dir: Path):
+        """Duplicate handling works with amount in filename."""
+        service = ArchiveService(archive_dir)
+        date = datetime(2024, 11, 15)
+
+        # Create first file
+        source1 = archive_dir / "temp1.pdf"
+        source1.write_text("first")
+        service.archive(
+            source1, date, "rewe", "ER",
+            is_credit_card=False, currency="EUR", amount="27.07"
+        )
+
+        # Create second file with same details
+        source2 = archive_dir / "temp2.pdf"
+        source2.write_text("second")
+        result = service.archive(
+            source2, date, "rewe", "ER",
+            is_credit_card=False, currency="EUR", amount="27.07"
+        )
+
+        assert result.name == "2024-11-15_EUR27-07_rewe_01.pdf"
+
+    def test_credit_card_with_amount(self, archive_dir: Path):
+        """Credit card receipts with amount go to next month."""
+        service = ArchiveService(archive_dir)
+
+        source = archive_dir / "temp.pdf"
+        source.write_text("test content")
+
+        date = datetime(2024, 11, 15)
+        result = service.archive(
+            source, date, "amazon", "ER-KKJK",
+            is_credit_card=True, currency="EUR", amount="99.99"
+        )
+
+        # Should be in December folder
+        expected_dir = archive_dir / "2024" / "12" / "ER-KKJK"
+        assert result.parent == expected_dir
+        assert result.name == "2024-11-15_EUR99-99_amazon.pdf"

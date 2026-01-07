@@ -16,7 +16,8 @@ Scannt Belege, erkennt Datum und Lieferant per OCR und archiviert sie als durchs
 ```bash
 # System-Abhängigkeiten (Debian/Ubuntu)
 sudo apt install sane-utils tesseract-ocr tesseract-ocr-deu \
-    ocrmypdf imagemagick python3-gi gir1.2-adw-1 gir1.2-gtk-4.0
+    ocrmypdf imagemagick python3-gi gir1.2-adw-1 gir1.2-gtk-4.0 \
+    gir1.2-webkit-6.0
 
 # Projekt installieren
 git clone https://github.com/jensens/belegscanner.git && cd belegscanner
@@ -116,6 +117,7 @@ uv run ruff check src/ tests/
 - `ocrmypdf` - PDF mit OCR-Layer
 - `imagemagick` - Bildverarbeitung
 - `python3-gi`, `gir1.2-adw-1`, `gir1.2-gtk-4.0` - GTK4 GUI
+- `gir1.2-webkit-6.0` - E-Mail HTML-Vorschau
 
 **Python-Pakete:**
 - `python-dateutil` - Datumsberechnung

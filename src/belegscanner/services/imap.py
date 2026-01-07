@@ -3,6 +3,7 @@
 import email
 import imaplib
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from email.header import decode_header
@@ -68,6 +69,8 @@ class ImapService:
         self.port = port
         self.use_ssl = use_ssl
         self._connection: imaplib.IMAP4_SSL | imaplib.IMAP4 | None = None
+        self._prefetch_connection: imaplib.IMAP4_SSL | imaplib.IMAP4 | None = None
+        self._prefetch_lock = threading.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -100,13 +103,171 @@ class ImapService:
             return False, str(e)
 
     def disconnect(self) -> None:
-        """Disconnect from IMAP server."""
+        """Disconnect from IMAP server (both main and prefetch connections)."""
         if self._connection:
             try:
                 self._connection.logout()
             except Exception:
                 pass
             self._connection = None
+
+        if self._prefetch_connection:
+            try:
+                self._prefetch_connection.logout()
+            except Exception:
+                pass
+            self._prefetch_connection = None
+
+    def connect_prefetch(self, username: str, password: str) -> bool:
+        """Establish a separate connection for prefetching.
+
+        This connection is used for parallel email fetching while the
+        main connection handles other operations.
+
+        Args:
+            username: IMAP username/email.
+            password: IMAP password.
+
+        Returns:
+            True if connection successful, False otherwise.
+        """
+        try:
+            if self.use_ssl:
+                self._prefetch_connection = imaplib.IMAP4_SSL(self.server, self.port)
+            else:
+                self._prefetch_connection = imaplib.IMAP4(self.server, self.port)
+
+            self._prefetch_connection.login(username, password)
+            return True
+        except Exception:
+            self._prefetch_connection = None
+            return False
+
+    def fetch_email_prefetch(self, uid: int, folder: str) -> EmailMessage | None:
+        """Fetch email using the prefetch connection.
+
+        Thread-safe method for fetching emails in parallel with main operations.
+
+        Args:
+            uid: Email UID.
+            folder: Folder containing the email.
+
+        Returns:
+            EmailMessage or None if not found or prefetch not connected.
+        """
+        if not self._prefetch_connection:
+            return None
+
+        with self._prefetch_lock:
+            try:
+                status, data = self._prefetch_connection.select(folder)
+                if status != "OK":
+                    return None
+
+                status, data = self._prefetch_connection.uid("FETCH", str(uid), "(RFC822)")
+                if status != "OK" or not data or not data[0]:
+                    return None
+
+                # Parse email (reuse existing parsing logic)
+                if isinstance(data[0], tuple):
+                    raw_email = data[0][1]
+                else:
+                    return None
+
+                return self._parse_email(uid, raw_email)
+            except Exception:
+                return None
+
+    def _parse_email(self, uid: int, raw_email: bytes) -> EmailMessage | None:
+        """Parse raw email bytes into EmailMessage.
+
+        Args:
+            uid: Email UID.
+            raw_email: Raw RFC822 email bytes.
+
+        Returns:
+            EmailMessage or None if parsing fails.
+        """
+        try:
+            msg = email.message_from_bytes(raw_email)
+
+            # Extract headers
+            sender = self._decode_header(msg.get("From", ""))
+            subject = self._decode_header(msg.get("Subject", ""))
+            message_id = msg.get("Message-ID", "")
+
+            # Parse date
+            date_str = msg.get("Date", "")
+            try:
+                date = parsedate_to_datetime(date_str)
+            except Exception:
+                date = datetime.now()
+
+            # Extract body and attachments
+            body_text = ""
+            body_html = None
+            attachments = []
+
+            if msg.is_multipart():
+                for part in msg.walk():
+                    content_type = part.get_content_type()
+                    content_disposition = str(part.get("Content-Disposition", "")).lower()
+                    filename = part.get_filename()
+
+                    is_attachment = "attachment" in content_disposition
+
+                    if not is_attachment and filename:
+                        filename_lower = filename.lower()
+                        attachment_extensions = (".pdf", ".zip", ".doc", ".docx", ".xls", ".xlsx")
+                        is_attachment = (
+                            content_type in ("application/pdf", "application/octet-stream")
+                            or filename_lower.endswith(attachment_extensions)
+                        )
+
+                    if is_attachment and filename:
+                        filename = self._decode_header(filename)
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            attachments.append(
+                                EmailAttachment(
+                                    filename=filename,
+                                    content_type=content_type,
+                                    size=len(payload),
+                                    data=payload,
+                                )
+                            )
+                    elif content_type == "text/plain" and not body_text:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            charset = part.get_content_charset() or "utf-8"
+                            body_text = payload.decode(charset, errors="replace")
+                    elif content_type == "text/html" and not body_html:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            charset = part.get_content_charset() or "utf-8"
+                            body_html = payload.decode(charset, errors="replace")
+            else:
+                content_type = msg.get_content_type()
+                payload = msg.get_payload(decode=True)
+                if payload:
+                    charset = msg.get_content_charset() or "utf-8"
+                    if content_type == "text/html":
+                        body_html = payload.decode(charset, errors="replace")
+                    else:
+                        body_text = payload.decode(charset, errors="replace")
+
+            return EmailMessage(
+                uid=uid,
+                sender=sender,
+                subject=subject,
+                date=date,
+                message_id=message_id,
+                body_text=body_text,
+                body_html=body_html,
+                attachments=attachments,
+            )
+        except Exception:
+            return None
 
     def list_folders(self) -> list[str]:
         """List all mailbox folders.
@@ -147,20 +308,16 @@ class ImapService:
             return []
 
         try:
-            print(f"[DEBUG] Selecting folder: {folder}")
             status, data = self._connection.select(folder)
-            print(f"[DEBUG] Select status: {status}, data: {data}")
             if status != "OK":
                 return []
 
             # Search for all emails
             status, data = self._connection.search(None, "ALL")
-            print(f"[DEBUG] Search status: {status}, data: {data}")
             if status != "OK" or not data[0]:
                 return []
 
             email_ids = data[0].split()
-            print(f"[DEBUG] Found {len(email_ids)} email IDs: {email_ids[:5]}...")
             if not email_ids:
                 return []
 
@@ -171,14 +328,10 @@ class ImapService:
             status, data = self._connection.fetch(
                 ids_str, "(UID ENVELOPE BODYSTRUCTURE)"
             )
-            print(f"[DEBUG] Fetch status: {status}, items: {len(data) if data else 0}")
-            if data:
-                print(f"[DEBUG] First 3 items types: {[type(x).__name__ for x in data[:3]]}")
-                print(f"[DEBUG] First item: {data[0][:300] if isinstance(data[0], bytes) else data[0]}")
             if status != "OK":
                 return []
 
-            for i, item in enumerate(data):
+            for item in data:
                 # Handle both tuple format (some servers) and bytes format (Gmail)
                 if isinstance(item, tuple):
                     raw_data = item[0]
@@ -187,19 +340,12 @@ class ImapService:
                 else:
                     continue
 
-                if i == 0:  # Show first item for debugging
-                    print(f"[DEBUG] Parsing item: {raw_data[:200]}...")
-
                 summary = self._parse_envelope(raw_data)
                 if summary:
                     summaries.append(summary)
-                elif i == 0:
-                    print(f"[DEBUG] Failed to parse first item")
 
-            print(f"[DEBUG] Parsed {len(summaries)} summaries")
             return summaries
-        except Exception as e:
-            print(f"[DEBUG] Exception in list_emails: {e}")
+        except Exception:
             return []
 
     def _parse_envelope(self, data: bytes) -> EmailSummary | None:
@@ -245,8 +391,18 @@ class ImapService:
             else:
                 sender = "(Unbekannt)"
 
-            # Check for attachments (MULTIPART in bodystructure indicates possible attachments)
-            has_attachments = "MULTIPART" in data_str.upper()
+            # Check for attachments in BODYSTRUCTURE
+            # Look for multiple patterns since servers format disposition differently:
+            # - ("ATTACHMENT" ...) - quoted uppercase
+            # - (attachment ...) - unquoted lowercase
+            # - ("FILENAME" ...) or ("NAME" "xxx.pdf") with common attachment extensions
+            data_upper = data_str.upper()
+            has_attachments = (
+                '"ATTACHMENT"' in data_upper
+                or "(ATTACHMENT " in data_upper
+                or re.search(r'\("(?:FILE)?NAME"\s+"[^"]+\.(?:PDF|ZIP|DOC|XLS)', data_upper)
+                is not None
+            )
 
             return EmailSummary(
                 uid=uid,
@@ -277,7 +433,6 @@ class ImapService:
                 return None
 
             status, data = self._connection.uid("FETCH", str(uid), "(RFC822)")
-            print(f"[DEBUG] fetch_email status: {status}, data type: {type(data[0]) if data else 'None'}")
             if status != "OK" or not data or not data[0]:
                 return None
 
@@ -285,80 +440,9 @@ class ImapService:
             if isinstance(data[0], tuple):
                 raw_email = data[0][1]
             else:
-                print(f"[DEBUG] fetch_email: data[0] is not tuple, it's {type(data[0])}")
                 return None
 
-            msg = email.message_from_bytes(raw_email)
-
-            # Extract headers
-            sender = self._decode_header(msg.get("From", ""))
-            subject = self._decode_header(msg.get("Subject", ""))
-            print(f"[DEBUG] fetch_email: sender={sender}, subject={subject[:50]}")
-            message_id = msg.get("Message-ID", "")
-
-            # Parse date
-            date_str = msg.get("Date", "")
-            try:
-                date = parsedate_to_datetime(date_str)
-            except Exception:
-                date = datetime.now()
-
-            # Extract body and attachments
-            body_text = ""
-            body_html = None
-            attachments = []
-
-            if msg.is_multipart():
-                for part in msg.walk():
-                    content_type = part.get_content_type()
-                    content_disposition = str(part.get("Content-Disposition", ""))
-
-                    if "attachment" in content_disposition:
-                        # This is an attachment
-                        filename = part.get_filename()
-                        if filename:
-                            filename = self._decode_header(filename)
-                            payload = part.get_payload(decode=True)
-                            if payload:
-                                attachments.append(
-                                    EmailAttachment(
-                                        filename=filename,
-                                        content_type=content_type,
-                                        size=len(payload),
-                                        data=payload,
-                                    )
-                                )
-                    elif content_type == "text/plain" and not body_text:
-                        payload = part.get_payload(decode=True)
-                        if payload:
-                            charset = part.get_content_charset() or "utf-8"
-                            body_text = payload.decode(charset, errors="replace")
-                    elif content_type == "text/html" and not body_html:
-                        payload = part.get_payload(decode=True)
-                        if payload:
-                            charset = part.get_content_charset() or "utf-8"
-                            body_html = payload.decode(charset, errors="replace")
-            else:
-                # Single part message
-                content_type = msg.get_content_type()
-                payload = msg.get_payload(decode=True)
-                if payload:
-                    charset = msg.get_content_charset() or "utf-8"
-                    if content_type == "text/html":
-                        body_html = payload.decode(charset, errors="replace")
-                    else:
-                        body_text = payload.decode(charset, errors="replace")
-
-            return EmailMessage(
-                uid=uid,
-                sender=sender,
-                subject=subject,
-                date=date,
-                message_id=message_id,
-                body_text=body_text,
-                body_html=body_html,
-                attachments=attachments,
-            )
+            return self._parse_email(uid, raw_email)
         except Exception:
             return None
 

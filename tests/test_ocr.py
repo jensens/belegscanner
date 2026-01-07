@@ -193,6 +193,245 @@ class TestExtractVendor:
         assert result == "bauhaus"
 
 
+class TestExtractAmount:
+    """Test amount/currency extraction from OCR text."""
+
+    def test_extracts_eur_with_euro_symbol_before(self):
+        """Extract EUR amount with € symbol before amount."""
+        service = OcrService()
+        text = "Gesamt: € 27,07"
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "27.07")
+
+    def test_extracts_eur_with_euro_symbol_after(self):
+        """Extract EUR amount with € symbol after amount."""
+        service = OcrService()
+        text = "Summe: 27,07 €"
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "27.07")
+
+    def test_extracts_eur_with_eur_text(self):
+        """Extract EUR amount with EUR text."""
+        service = OcrService()
+        text = "Total: EUR 150,00"
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "150.00")
+
+    def test_extracts_usd_with_dollar_symbol(self):
+        """Extract USD amount with $ symbol."""
+        service = OcrService()
+        text = "Total: $99.50"
+
+        result = service.extract_amount(text)
+
+        assert result == ("USD", "99.50")
+
+    def test_extracts_usd_with_usd_text(self):
+        """Extract USD amount with USD text."""
+        service = OcrService()
+        text = "Total: USD 150.00"
+
+        result = service.extract_amount(text)
+
+        assert result == ("USD", "150.00")
+
+    def test_extracts_chf(self):
+        """Extract CHF amount."""
+        service = OcrService()
+        text = "Betrag: CHF 89.50"
+
+        result = service.extract_amount(text)
+
+        assert result == ("CHF", "89.50")
+
+    def test_prefers_brutto_over_other_amounts(self):
+        """Prefer amount from Brutto line over others."""
+        service = OcrService()
+        text = """Netto: € 22,75
+        MwSt: € 4,32
+        Brutto: € 27,07"""
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "27.07")
+
+    def test_prefers_gesamt_line(self):
+        """Prefer amount from Gesamt line."""
+        service = OcrService()
+        text = """Artikel 1: € 10,00
+        Artikel 2: € 17,07
+        Gesamt: € 27,07"""
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "27.07")
+
+    def test_prefers_summe_line(self):
+        """Prefer amount from Summe line."""
+        service = OcrService()
+        text = """Position 1: 10,00 €
+        Position 2: 17,07 €
+        Summe: 27,07 €"""
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "27.07")
+
+    def test_prefers_total_line(self):
+        """Prefer amount from Total line."""
+        service = OcrService()
+        text = """Item: $50.00
+        Tax: $5.00
+        Total: $55.00"""
+
+        result = service.extract_amount(text)
+
+        assert result == ("USD", "55.00")
+
+    def test_prefers_endbetrag_line(self):
+        """Prefer amount from Endbetrag line."""
+        service = OcrService()
+        text = """Zwischensumme: € 25,00
+        Rabatt: € -2,00
+        Endbetrag: € 23,00"""
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "23.00")
+
+    def test_prefers_zu_zahlen_line(self):
+        """Prefer amount from 'zu zahlen' line."""
+        service = OcrService()
+        text = """Summe: € 25,00
+        Zu zahlen: € 25,00"""
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "25.00")
+
+    def test_handles_comma_decimal_separator(self):
+        """Handle German comma decimal separator."""
+        service = OcrService()
+        text = "Betrag: 1.234,56 €"
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "1234.56")
+
+    def test_handles_dot_decimal_separator(self):
+        """Handle English dot decimal separator."""
+        service = OcrService()
+        text = "Amount: $1,234.56"
+
+        result = service.extract_amount(text)
+
+        assert result == ("USD", "1234.56")
+
+    def test_handles_no_decimal(self):
+        """Handle amounts without decimal places."""
+        service = OcrService()
+        text = "Gesamt: € 100"
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "100.00")
+
+    def test_returns_none_for_none_input(self):
+        """Return None when input is None."""
+        service = OcrService()
+
+        result = service.extract_amount(None)
+
+        assert result is None
+
+    def test_returns_none_for_empty_string(self):
+        """Return None when input is empty."""
+        service = OcrService()
+
+        result = service.extract_amount("")
+
+        assert result is None
+
+    def test_returns_none_when_no_amount(self):
+        """Return None when no amount pattern found."""
+        service = OcrService()
+        text = "Kein Betrag hier"
+
+        result = service.extract_amount(text)
+
+        assert result is None
+
+    def test_fallback_to_last_amount_with_currency(self):
+        """When no total line found, use last amount with currency."""
+        service = OcrService()
+        text = """Artikel: € 10,00
+        Noch ein Artikel: € 17,07"""
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "17.07")
+
+    def test_extracts_amount_case_insensitive(self):
+        """Extract amount with case-insensitive keywords."""
+        service = OcrService()
+        text = "GESAMT: € 27,07"
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "27.07")
+
+    def test_handles_other_currency_codes(self):
+        """Handle other 3-letter currency codes."""
+        service = OcrService()
+        text = "Total: GBP 50.00"
+
+        result = service.extract_amount(text)
+
+        assert result == ("GBP", "50.00")
+
+    def test_ignores_unknown_currency_codes(self):
+        """Ignore random 3-letter words that look like currency codes.
+
+        Regression test: 'PRE' from 'Prepaid' was matched as currency.
+        """
+        service = OcrService()
+        # PRE is not a valid currency
+        text = "Amount: PRE 2667.00"
+
+        result = service.extract_amount(text)
+
+        assert result is None
+
+    def test_anthropic_receipt_email(self):
+        """Extract correct amount from Anthropic receipt email.
+
+        Regression test: Was extracting 2667.00 PRE instead of 5.00 EUR.
+        The issue was: '2667 Prepaid' matched as '2667 PRE' currency.
+        """
+        service = OcrService()
+        text = """Receipt #2422-7882-2667 Prepaid extra usage, Individual plan Qty 1 €5.00 Total €5.00 Amount paid €5.00"""
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "5.00")
+
+    def test_finds_amount_after_total_keyword(self):
+        """When total keyword found, search for amount AFTER the keyword."""
+        service = OcrService()
+        # Amount appears before AND after "Total"
+        text = "Item: €99.00 other stuff Total: €5.00"
+
+        result = service.extract_amount(text)
+
+        assert result == ("EUR", "5.00")
+
+
 class TestFindBestThreshold:
     """Test multi-threshold OCR functionality."""
 

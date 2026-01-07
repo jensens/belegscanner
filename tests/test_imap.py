@@ -283,6 +283,43 @@ class TestImapServiceFetchEmail:
             assert email.attachments[0].content_type == "application/pdf"
             assert len(email.attachments[0].data) > 0
 
+    def test_fetch_email_extracts_octet_stream_attachment(self):
+        """fetch_email() extracts application/octet-stream with PDF filename."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.select.return_value = ("OK", [b"1"])
+            # Email with application/octet-stream attachment (like domaindiscount24)
+            email_bytes = (
+                b"From: support@domaindiscount24.com\r\n"
+                b"Subject: Ihre Rechnung\r\n"
+                b"Date: 23 Nov 2025 13:38:00 +0100\r\n"
+                b"Message-ID: <test@example.com>\r\n"
+                b"Content-Type: multipart/mixed; boundary=\"boundary123\"\r\n"
+                b"\r\n"
+                b"--boundary123\r\n"
+                b"Content-Type: text/html; charset=utf-8\r\n"
+                b"\r\n"
+                b"<html><body>Invoice</body></html>\r\n"
+                b"--boundary123\r\n"
+                b"Content-Type: application/octet-stream\r\n"
+                b'Content-Disposition: attachment; filename="2025172897.pdf"\r\n'
+                b"\r\n"
+                b"JVBERi0xLjQK\r\n"
+                b"--boundary123--\r\n"
+            )
+            mock_conn.uid.return_value = ("OK", [(b"1 (RFC822 ", email_bytes, b")")])
+            mock_imap.return_value = mock_conn
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            email = service.fetch_email(101, "INBOX")
+
+            assert email is not None
+            assert len(email.attachments) == 1
+            assert email.attachments[0].filename == "2025172897.pdf"
+            assert email.attachments[0].content_type == "application/octet-stream"
+
     def test_fetch_email_returns_none_when_not_found(self):
         """fetch_email() returns None when email not found."""
         with patch("imaplib.IMAP4_SSL") as mock_imap:
@@ -363,6 +400,295 @@ class TestImapServiceMoveEmail:
         )
 
         assert result is False
+
+
+class TestHasAttachmentsDetection:
+    """Test attachment detection in BODYSTRUCTURE parsing."""
+
+    def test_has_attachments_true_with_pdf_attachment(self):
+        """has_attachments is True when BODYSTRUCTURE contains attachment disposition."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.select.return_value = ("OK", [b"1"])
+            mock_conn.search.return_value = ("OK", [b"1"])
+            # BODYSTRUCTURE with attachment disposition
+            mock_conn.fetch.return_value = (
+                "OK",
+                [
+                    (
+                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
+                        b'"Ihre Rechnung" '
+                        b'((NIL NIL "rechnung" "amazon.de")) '
+                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                        b'("APPLICATION" "PDF" ("NAME" "Rechnung.pdf") NIL NIL "BASE64" 5000 NIL '
+                        b'("ATTACHMENT" ("FILENAME" "Rechnung.pdf")) NIL NIL) "MIXED"))',
+                    ),
+                    b")",
+                ],
+            )
+            mock_imap.return_value = mock_conn
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            emails = service.list_emails("INBOX")
+
+            assert len(emails) == 1
+            assert emails[0].has_attachments is True
+
+    def test_has_attachments_false_for_multipart_alternative(self):
+        """has_attachments is False for multipart/alternative (HTML+Text) without attachment."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.select.return_value = ("OK", [b"1"])
+            mock_conn.search.return_value = ("OK", [b"1"])
+            # BODYSTRUCTURE with multipart/alternative but NO attachment
+            mock_conn.fetch.return_value = (
+                "OK",
+                [
+                    (
+                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
+                        b'"Newsletter" '
+                        b'((NIL NIL "news" "example.com")) '
+                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                        b'("TEXT" "HTML" NIL NIL NIL "QUOTED-PRINTABLE" 500 20 NIL NIL NIL NIL) "ALTERNATIVE"))',
+                    ),
+                    b")",
+                ],
+            )
+            mock_imap.return_value = mock_conn
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            emails = service.list_emails("INBOX")
+
+            assert len(emails) == 1
+            assert emails[0].has_attachments is False
+
+    def test_has_attachments_false_for_plain_text(self):
+        """has_attachments is False for simple text email."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.select.return_value = ("OK", [b"1"])
+            mock_conn.search.return_value = ("OK", [b"1"])
+            # Simple text email
+            mock_conn.fetch.return_value = (
+                "OK",
+                [
+                    (
+                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
+                        b'"Kurze Nachricht" '
+                        b'((NIL NIL "sender" "example.com")) '
+                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b'BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 50 5 NIL NIL NIL NIL))',
+                    ),
+                    b")",
+                ],
+            )
+            mock_imap.return_value = mock_conn
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            emails = service.list_emails("INBOX")
+
+            assert len(emails) == 1
+            assert emails[0].has_attachments is False
+
+    def test_has_attachments_true_with_inline_disposition_ignored(self):
+        """has_attachments ignores inline images (only counts attachment disposition)."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.select.return_value = ("OK", [b"1"])
+            mock_conn.search.return_value = ("OK", [b"1"])
+            # BODYSTRUCTURE with inline image but no attachment
+            mock_conn.fetch.return_value = (
+                "OK",
+                [
+                    (
+                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
+                        b'"Email mit Bild" '
+                        b'((NIL NIL "sender" "example.com")) '
+                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b'BODYSTRUCTURE (("TEXT" "HTML" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                        b'("IMAGE" "PNG" ("NAME" "logo.png") NIL NIL "BASE64" 5000 NIL '
+                        b'("INLINE" ("FILENAME" "logo.png")) NIL NIL) "RELATED"))',
+                    ),
+                    b")",
+                ],
+            )
+            mock_imap.return_value = mock_conn
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            emails = service.list_emails("INBOX")
+
+            assert len(emails) == 1
+            assert emails[0].has_attachments is False
+
+    def test_has_attachments_true_without_quotes(self):
+        """has_attachments detects attachment without quotes in BODYSTRUCTURE."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.select.return_value = ("OK", [b"1"])
+            mock_conn.search.return_value = ("OK", [b"1"])
+            # BODYSTRUCTURE with attachment but no quotes around disposition
+            mock_conn.fetch.return_value = (
+                "OK",
+                [
+                    (
+                        b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
+                        b'"Ihre Rechnung" '
+                        b'((NIL NIL "support" "domaindiscount24.com")) '
+                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b'BODYSTRUCTURE (("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                        b'("APPLICATION" "OCTET-STREAM" NIL NIL NIL "BASE64" 5000 NIL '
+                        b'(attachment ("FILENAME" "2025172897.pdf")) NIL NIL) "MIXED"))',
+                    ),
+                    b")",
+                ],
+            )
+            mock_imap.return_value = mock_conn
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            emails = service.list_emails("INBOX")
+
+            assert len(emails) == 1
+            assert emails[0].has_attachments is True
+
+    def test_has_attachments_true_with_filename_in_bodystructure(self):
+        """has_attachments detects attachment via filename pattern in BODYSTRUCTURE."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.select.return_value = ("OK", [b"1"])
+            mock_conn.search.return_value = ("OK", [b"1"])
+            # BODYSTRUCTURE with filename but different disposition format
+            mock_conn.fetch.return_value = (
+                "OK",
+                [
+                    (
+                        b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
+                        b'"Ihre Rechnung" '
+                        b'((NIL NIL "support" "example.com")) '
+                        b'NIL NIL NIL NIL NIL NIL NIL) '
+                        b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                        b'("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 5000 NIL '
+                        b'NIL NIL NIL) "MIXED"))',
+                    ),
+                    b")",
+                ],
+            )
+            mock_imap.return_value = mock_conn
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            emails = service.list_emails("INBOX")
+
+            assert len(emails) == 1
+            assert emails[0].has_attachments is True
+
+
+class TestImapServicePrefetch:
+    """Test prefetch connection for parallel email fetching."""
+
+    def test_connect_prefetch_establishes_second_connection(self):
+        """connect_prefetch() creates a separate IMAP connection."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn1 = MagicMock()
+            mock_conn1.login.return_value = ("OK", [])
+            mock_conn2 = MagicMock()
+            mock_conn2.login.return_value = ("OK", [])
+            mock_imap.side_effect = [mock_conn1, mock_conn2]
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            result = service.connect_prefetch("user@example.com", "password123")
+
+            assert result is True
+            assert mock_imap.call_count == 2
+
+    def test_connect_prefetch_returns_false_on_failure(self):
+        """connect_prefetch() returns False when connection fails."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn1 = MagicMock()
+            mock_conn1.login.return_value = ("OK", [])
+            mock_imap.side_effect = [mock_conn1, Exception("Connection refused")]
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            result = service.connect_prefetch("user@example.com", "password123")
+
+            assert result is False
+
+    def test_fetch_email_prefetch_uses_separate_connection(self):
+        """fetch_email_prefetch() uses the prefetch connection."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn1 = MagicMock()
+            mock_conn1.login.return_value = ("OK", [])
+            mock_conn2 = MagicMock()
+            mock_conn2.login.return_value = ("OK", [])
+            mock_conn2.select.return_value = ("OK", [b"1"])
+
+            email_bytes = (
+                b"From: test@example.com\r\n"
+                b"Subject: Test\r\n"
+                b"Date: Fri, 15 Nov 2024 10:30:00 +0100\r\n"
+                b"Message-ID: <test@example.com>\r\n"
+                b"Content-Type: text/plain\r\n"
+                b"\r\n"
+                b"Test body\r\n"
+            )
+            mock_conn2.uid.return_value = ("OK", [(b"1 (RFC822 ", email_bytes, b")")])
+            mock_imap.side_effect = [mock_conn1, mock_conn2]
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            service.connect_prefetch("user@example.com", "password123")
+            email = service.fetch_email_prefetch(101, "INBOX")
+
+            assert email is not None
+            # Verify prefetch connection was used, not main connection
+            mock_conn2.select.assert_called()
+            mock_conn1.select.assert_not_called()
+
+    def test_fetch_email_prefetch_returns_none_without_prefetch_connection(self):
+        """fetch_email_prefetch() returns None if prefetch not connected."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_imap.return_value = mock_conn
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            # Don't call connect_prefetch
+            email = service.fetch_email_prefetch(101, "INBOX")
+
+            assert email is None
+
+    def test_disconnect_closes_both_connections(self):
+        """disconnect() closes main and prefetch connections."""
+        with patch("imaplib.IMAP4_SSL") as mock_imap:
+            mock_conn1 = MagicMock()
+            mock_conn1.login.return_value = ("OK", [])
+            mock_conn2 = MagicMock()
+            mock_conn2.login.return_value = ("OK", [])
+            mock_imap.side_effect = [mock_conn1, mock_conn2]
+
+            service = ImapService("imap.example.com")
+            service.connect("user@example.com", "password123")
+            service.connect_prefetch("user@example.com", "password123")
+            service.disconnect()
+
+            mock_conn1.logout.assert_called_once()
+            mock_conn2.logout.assert_called_once()
+            assert service.is_connected is False
 
 
 class TestDataClasses:

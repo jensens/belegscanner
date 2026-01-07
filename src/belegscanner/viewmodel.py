@@ -21,6 +21,8 @@ class ScanViewModel(GObject.Object):
         is_busy: Whether an operation is in progress
         suggested_date: OCR-extracted date suggestion
         suggested_vendor: OCR-extracted vendor suggestion
+        suggested_currency: OCR-extracted currency (default: EUR)
+        suggested_amount: OCR-extracted amount suggestion
 
     Usage:
         vm = ScanViewModel()
@@ -36,6 +38,11 @@ class ScanViewModel(GObject.Object):
     current_page_index = GObject.Property(type=int, default=0, nick="current-page-index")
     suggested_date = GObject.Property(type=str, default=None, nick="suggested-date")
     suggested_vendor = GObject.Property(type=str, default=None, nick="suggested-vendor")
+    suggested_currency = GObject.Property(type=str, default="EUR", nick="suggested-currency")
+    suggested_amount = GObject.Property(type=str, default=None, nick="suggested-amount")
+    ki_extraction_running = GObject.Property(
+        type=bool, default=False, nick="ki-extraction-running"
+    )
 
     def __init__(self):
         """Initialize ViewModel with empty state."""
@@ -71,5 +78,8 @@ class ScanViewModel(GObject.Object):
         self.current_page_index = 0
         self.suggested_date = ""  # GObject strings can't be None
         self.suggested_vendor = ""
+        self.suggested_currency = "EUR"
+        self.suggested_amount = ""
         self.status = "Bereit"
         self.is_busy = False
+        self.ki_extraction_running = False

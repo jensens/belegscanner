@@ -16,7 +16,9 @@ from belegscanner.email_view import EmailView
 from belegscanner.services import (
     ArchiveService,
     ConfigManager,
+    CredentialService,
     OcrService,
+    OllamaService,
     PdfService,
     ScannerService,
 )
@@ -47,10 +49,15 @@ class BelegscannerWindow(Adw.ApplicationWindow):
 
         # Services
         self.config = ConfigManager()
+        self.credential = CredentialService()
         self.scanner = ScannerService()
         self.ocr = OcrService()
+        self.ollama = OllamaService()
         self.pdf = PdfService()
         self.archive = ArchiveService()
+
+        # Store OCR text for KI fallback
+        self._current_ocr_text: str | None = None
 
         # ViewModel
         self.vm = ScanViewModel()
@@ -210,6 +217,28 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         self.date_hint.set_margin_start(12)
         input_box.append(self.date_hint)
 
+        # Amount row with currency dropdown and entry
+        amount_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.currency_dropdown = Gtk.DropDown()
+        currency_model = Gtk.StringList()
+        for currency in ["EUR", "USD", "CHF", "GBP"]:
+            currency_model.append(currency)
+        self.currency_dropdown.set_model(currency_model)
+        self.currency_dropdown.set_size_request(80, -1)
+        amount_box.append(self.currency_dropdown)
+
+        self.amount_row = Adw.EntryRow(title="Betrag (z.B. 27,07)")
+        self.amount_row.set_hexpand(True)
+        amount_box.append(self.amount_row)
+
+        date_group.add(amount_box)
+
+        self.amount_hint = Gtk.Label()
+        self.amount_hint.set_xalign(0)
+        self.amount_hint.add_css_class("dim-label")
+        self.amount_hint.set_margin_start(12)
+        input_box.append(self.amount_hint)
+
         # Description entry
         self.desc_row = Adw.EntryRow(title="Beschreibung")
         date_group.add(self.desc_row)
@@ -219,6 +248,14 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         self.desc_hint.add_css_class("dim-label")
         self.desc_hint.set_margin_start(12)
         input_box.append(self.desc_hint)
+
+        # KI-Extraktion button
+        self.ki_btn = Gtk.Button(label="KI-Extraktion")
+        self.ki_btn.set_tooltip_text("Verwendet lokales KI-Modell (Ollama) zur Extraktion")
+        self.ki_btn.set_sensitive(False)
+        self.ki_btn.connect("clicked", self._on_ki_extract_clicked)
+        self.ki_btn.set_margin_top(6)
+        input_box.append(self.ki_btn)
 
         # Category dropdown
         cat_group = Adw.PreferencesGroup(title="Kategorie")
@@ -312,20 +349,40 @@ class BelegscannerWindow(Adw.ApplicationWindow):
             text = self.ocr.find_best_threshold(page_path)
             date = self.ocr.extract_date(text)
             vendor = self.ocr.extract_vendor(text)
-            GLib.idle_add(self._on_ocr_complete, date, vendor)
+            amount = self.ocr.extract_amount(text)
+            GLib.idle_add(self._on_ocr_complete, text, date, vendor, amount)
 
         thread = threading.Thread(target=ocr_thread, daemon=True)
         thread.start()
 
-    def _on_ocr_complete(self, date: str | None, vendor: str | None):
+    def _on_ocr_complete(
+        self,
+        ocr_text: str | None,
+        date: str | None,
+        vendor: str | None,
+        amount: tuple[str, str] | None,
+    ):
         """Handle OCR completion."""
-        self.vm.is_busy = False
-        self.vm.status = "Bereit"
+        # Store OCR text for KI fallback
+        self._current_ocr_text = ocr_text
 
         if date:
             self.vm.suggested_date = date
             self.date_row.set_text(date)
             self.date_hint.set_label(f"Erkannt: {date}")
+
+        if amount:
+            currency, amount_value = amount
+            self.vm.suggested_currency = currency
+            self.vm.suggested_amount = amount_value
+            # Set currency dropdown
+            currencies = ["EUR", "USD", "CHF", "GBP"]
+            if currency in currencies:
+                self.currency_dropdown.set_selected(currencies.index(currency))
+            # Set amount (convert to German format for display)
+            display_amount = amount_value.replace(".", ",")
+            self.amount_row.set_text(display_amount)
+            self.amount_hint.set_label(f"Erkannt: {currency} {display_amount}")
 
         if vendor:
             self.vm.suggested_vendor = vendor
@@ -333,6 +390,69 @@ class BelegscannerWindow(Adw.ApplicationWindow):
             self.desc_hint.set_label(f"Erkannt: {vendor}")
 
         self._update_buttons()
+
+        # Auto-fallback: Run KI extraction if OCR results are incomplete
+        has_gaps = not date or not vendor or not amount or (vendor and len(vendor) < 3)
+        if has_gaps and ocr_text and self.ollama.is_available():
+            self._do_ki_extraction()
+        else:
+            self.vm.is_busy = False
+            self.vm.status = "Bereit"
+
+    def _on_ki_extract_clicked(self, button):
+        """Handle KI-Extraktion button click."""
+        if not self._current_ocr_text:
+            self._show_error("Fehler", "Kein OCR-Text vorhanden. Bitte zuerst scannen.")
+            return
+
+        if not self.ollama.is_available():
+            self._show_error(
+                "Ollama nicht verfügbar",
+                "Bitte Ollama starten:\n\n"
+                "ollama serve\n\n"
+                "Modell installieren:\n\n"
+                "ollama pull phi3",
+            )
+            return
+
+        self._do_ki_extraction()
+
+    def _do_ki_extraction(self):
+        """Run KI extraction in background thread."""
+        self.vm.ki_extraction_running = True
+        self.vm.status = "KI-Extraktion läuft..."
+        self.ki_btn.set_sensitive(False)
+
+        def ki_thread():
+            result = self.ollama.extract(self._current_ocr_text)
+            GLib.idle_add(self._on_ki_extraction_complete, result)
+
+        thread = threading.Thread(target=ki_thread, daemon=True)
+        thread.start()
+
+    def _on_ki_extraction_complete(self, result):
+        """Handle KI extraction completion."""
+        self.vm.ki_extraction_running = False
+        self.vm.is_busy = False
+        self.vm.status = "KI-Extraktion abgeschlossen"
+        self.ki_btn.set_sensitive(True)
+
+        if result.date and not self.date_row.get_text():
+            self.date_row.set_text(result.date)
+            self.date_hint.set_label(f"KI: {result.date}")
+
+        if result.amount and not self.amount_row.get_text():
+            display_amount = result.amount.replace(".", ",")
+            self.amount_row.set_text(display_amount)
+            if result.currency:
+                currencies = ["EUR", "USD", "CHF", "GBP"]
+                if result.currency in currencies:
+                    self.currency_dropdown.set_selected(currencies.index(result.currency))
+            self.amount_hint.set_label(f"KI: {result.currency or 'EUR'} {display_amount}")
+
+        if result.vendor and not self.desc_row.get_text():
+            self.desc_row.set_text(result.vendor)
+            self.desc_hint.set_label(f"KI: {result.vendor}")
 
     def _on_scan_failed(self):
         """Handle scan failure."""
@@ -362,6 +482,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         self.rescan_btn.set_sensitive(has_pages)
         self.save_btn.set_sensitive(has_pages)
         self.add_page_btn.set_sensitive(has_pages)
+        self.ki_btn.set_sensitive(has_pages and bool(self._current_ocr_text))
 
     def _on_prev_page(self, button):
         """Go to previous page."""
@@ -382,10 +503,12 @@ class BelegscannerWindow(Adw.ApplicationWindow):
 
         # Get input values
         date_str = self.date_row.get_text().strip()
+        amount_str = self.amount_row.get_text().strip()
         desc = self.desc_row.get_text().strip()
         cat_idx = self.category_row.get_selected()
+        currency_idx = self.currency_dropdown.get_selected()
 
-        # Validate
+        # Validate date
         if not date_str:
             self._show_error("Fehler", "Bitte Datum eingeben.")
             return
@@ -396,6 +519,25 @@ class BelegscannerWindow(Adw.ApplicationWindow):
             self._show_error("Fehler", "Ungültiges Datumsformat. Bitte TT.MM.JJJJ verwenden.")
             return
 
+        # Validate amount (required)
+        if not amount_str:
+            self._show_error("Fehler", "Bitte Betrag eingeben.")
+            return
+
+        # Parse amount: accept both , and . as decimal separator
+        amount_str = amount_str.replace(",", ".")
+        try:
+            amount_value = float(amount_str)
+            amount = f"{amount_value:.2f}"
+        except ValueError:
+            self._show_error("Fehler", "Ungültiger Betrag. Bitte Zahl eingeben (z.B. 27,07).")
+            return
+
+        # Get currency
+        currencies = ["EUR", "USD", "CHF", "GBP"]
+        currency = currencies[currency_idx] if currency_idx < len(currencies) else "EUR"
+
+        # Validate description
         if not desc:
             self._show_error("Fehler", "Bitte Beschreibung eingeben.")
             return
@@ -418,9 +560,12 @@ class BelegscannerWindow(Adw.ApplicationWindow):
                     GLib.idle_add(self._on_save_failed, "PDF konnte nicht erstellt werden.")
                     return
 
-                # Archive
+                # Archive with amount
                 self.archive.base_path = self.config.archive_path
-                final_path = self.archive.archive(pdf_path, date, desc, category, is_cc)
+                final_path = self.archive.archive(
+                    pdf_path, date, desc, category, is_cc,
+                    currency=currency, amount=amount
+                )
 
                 GLib.idle_add(self._on_save_complete, final_path, is_cc)
 
@@ -443,8 +588,11 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         # Reset for next scan
         self.vm.clear()
         self.date_row.set_text("")
+        self.amount_row.set_text("")
+        self.currency_dropdown.set_selected(0)  # Reset to EUR
         self.desc_row.set_text("")
         self.date_hint.set_label("")
+        self.amount_hint.set_label("")
         self.desc_hint.set_label("")
         self._update_preview()
         self._update_buttons()
@@ -460,17 +608,52 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         self._show_config_dialog()
 
     def _show_config_dialog(self):
-        """Show configuration dialog."""
+        """Show configuration dialog with archive path and IMAP settings."""
         dialog = Adw.MessageDialog(
             transient_for=self,
             heading="Einstellungen",
-            body="Ablage-Pfad konfigurieren:",
         )
 
-        entry = Gtk.Entry()
-        entry.set_text(self.config.archive_path or "")
-        entry.set_placeholder_text("/pfad/zu/nextcloud/finanzen")
-        dialog.set_extra_child(entry)
+        # Main container
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+
+        # Archive path group
+        archive_group = Adw.PreferencesGroup(title="Ablage")
+        main_box.append(archive_group)
+
+        archive_entry = Adw.EntryRow(title="Ablage-Pfad")
+        archive_entry.set_text(self.config.archive_path or "")
+        archive_group.add(archive_entry)
+
+        # IMAP settings group
+        imap_group = Adw.PreferencesGroup(title="E-Mail (IMAP)")
+        main_box.append(imap_group)
+
+        server_entry = Adw.EntryRow(title="IMAP-Server")
+        server_entry.set_text(self.config.imap_server or "")
+        imap_group.add(server_entry)
+
+        user_entry = Adw.EntryRow(title="E-Mail-Adresse")
+        user_entry.set_text(self.config.imap_user or "")
+        imap_group.add(user_entry)
+
+        pass_entry = Adw.PasswordEntryRow(title="Passwort")
+        # Load existing password from keyring
+        if self.config.imap_user:
+            stored_pass = self.credential.get_password(self.config.imap_user)
+            if stored_pass:
+                pass_entry.set_text(stored_pass)
+        imap_group.add(pass_entry)
+
+        inbox_entry = Adw.EntryRow(title="Posteingang-Ordner")
+        inbox_entry.set_text(self.config.imap_inbox or "")
+        imap_group.add(inbox_entry)
+
+        archive_folder_entry = Adw.EntryRow(title="Archiv-Ordner")
+        archive_folder_entry.set_text(self.config.imap_archive or "")
+        imap_group.add(archive_folder_entry)
+
+        dialog.set_extra_child(main_box)
 
         dialog.add_response("cancel", "Abbrechen")
         dialog.add_response("save", "Speichern")
@@ -478,10 +661,30 @@ class BelegscannerWindow(Adw.ApplicationWindow):
 
         def on_response(dialog, response):
             if response == "save":
-                path = entry.get_text().strip()
+                # Save archive path
+                path = archive_entry.get_text().strip()
                 if path:
                     self.config.archive_path = path
-                    self.vm.status = f"Ablage: {path}"
+
+                # Save IMAP settings
+                server = server_entry.get_text().strip()
+                user = user_entry.get_text().strip()
+                password = pass_entry.get_text()
+                inbox = inbox_entry.get_text().strip()
+                archive_folder = archive_folder_entry.get_text().strip()
+
+                if server:
+                    self.config.imap_server = server
+                if user:
+                    self.config.imap_user = user
+                if password and user:
+                    self.credential.store_password(user, password)
+                if inbox:
+                    self.config.imap_inbox = inbox
+                if archive_folder:
+                    self.config.imap_archive = archive_folder
+
+                self.vm.status = "Einstellungen gespeichert"
 
         dialog.connect("response", on_response)
         dialog.present()

@@ -59,6 +59,8 @@ class ArchiveService:
         description: str,
         category: str,
         is_credit_card: bool,
+        currency: str | None = None,
+        amount: str | None = None,
     ) -> Path:
         """Move PDF to archive folder.
 
@@ -71,6 +73,8 @@ class ArchiveService:
             description: Receipt description (for filename)
             category: Category folder name (e.g., "ER", "Kassa")
             is_credit_card: Whether this is a credit card receipt
+            currency: Currency code (e.g., "EUR", "USD", "CHF")
+            amount: Amount as string (e.g., "27.07")
 
         Returns:
             Path to the archived file
@@ -87,15 +91,24 @@ class ArchiveService:
         target_dir = self._base_path / str(year) / f"{month:02d}" / category
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create filename: YYYY-MM-DD_description.pdf
+        # Create filename
         date_str = date.strftime("%Y-%m-%d")
-        filename = f"{date_str}_{description}.pdf"
+
+        if currency and amount:
+            # New format: YYYY-MM-DD_EUR27-07_description.pdf
+            amount_formatted = amount.replace(".", "-")
+            base_filename = f"{date_str}_{currency}{amount_formatted}_{description}"
+        else:
+            # Legacy format: YYYY-MM-DD_description.pdf
+            base_filename = f"{date_str}_{description}"
+
+        filename = f"{base_filename}.pdf"
         target_path = target_dir / filename
 
         # Handle duplicates
         counter = 1
         while target_path.exists():
-            filename = f"{date_str}_{description}_{counter:02d}.pdf"
+            filename = f"{base_filename}_{counter:02d}.pdf"
             target_path = target_dir / filename
             counter += 1
 

@@ -3,14 +3,15 @@
 Uses GObject properties and signals for reactive UI binding.
 """
 
-import re
-
 import gi
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import GObject
 
+from belegscanner.services.email_cache import EmailCache
 from belegscanner.services.imap import EmailMessage, EmailSummary
+from belegscanner.services.ocr import OcrService
+from belegscanner.services.vendor import VendorExtractor
 
 
 class EmailViewModel(GObject.Object):
@@ -22,6 +23,8 @@ class EmailViewModel(GObject.Object):
         is_connected: Whether connected to IMAP server
         suggested_date: Extracted date suggestion
         suggested_description: Extracted description suggestion
+        suggested_currency: Currency code (default: EUR)
+        suggested_amount: Extracted amount suggestion
         selected_attachment_index: Selected attachment (-1 = email as PDF)
 
     Usage:
@@ -41,8 +44,13 @@ class EmailViewModel(GObject.Object):
     suggested_description = GObject.Property(
         type=str, default="", nick="suggested-description"
     )
+    suggested_currency = GObject.Property(type=str, default="EUR", nick="suggested-currency")
+    suggested_amount = GObject.Property(type=str, default="", nick="suggested-amount")
     selected_attachment_index = GObject.Property(
         type=int, default=-1, nick="selected-attachment-index"
+    )
+    ki_extraction_running = GObject.Property(
+        type=bool, default=False, nick="ki-extraction-running"
     )
 
     def __init__(self):
@@ -51,11 +59,41 @@ class EmailViewModel(GObject.Object):
         self._emails: list[EmailSummary] = []
         self._selected_email: EmailSummary | None = None
         self._current_email: EmailMessage | None = None
+        self._filter_query: str = ""
+        self._current_folder: str = ""
+        self._cache = EmailCache(max_size=20)
+        self._ocr_service = OcrService()
+        self._vendor_extractor = VendorExtractor()
 
     @property
     def emails(self) -> list[EmailSummary]:
         """Get list of email summaries."""
         return self._emails.copy()
+
+    @property
+    def filtered_emails(self) -> list[EmailSummary]:
+        """Get filtered list of email summaries.
+
+        If no filter is set, returns all emails.
+        Filter matches sender or subject (case-insensitive).
+        """
+        if not self._filter_query:
+            return self._emails.copy()
+
+        query = self._filter_query.lower()
+        return [
+            email
+            for email in self._emails
+            if query in email.sender.lower() or query in email.subject.lower()
+        ]
+
+    def set_filter(self, query: str) -> None:
+        """Set filter query for email list.
+
+        Args:
+            query: Search string to filter by (matches sender/subject).
+        """
+        self._filter_query = query.strip()
 
     @property
     def selected_email(self) -> EmailSummary | None:
@@ -111,53 +149,123 @@ class EmailViewModel(GObject.Object):
             # Extract date suggestion from email date
             self.suggested_date = email.date.strftime("%d.%m.%Y")
 
-            # Extract description from sender
-            self.suggested_description = self._extract_description(email.sender)
+            # Extract vendor description from sender/subject
+            self.suggested_description = (
+                self._vendor_extractor.extract(
+                    sender=email.sender,
+                    subject=email.subject,
+                )
+                or ""
+            )
+
+            # Extract amount from email body text (or HTML if text is empty)
+            text_for_extraction = email.body_text or self._strip_html(email.body_html)
+            amount_result = self._ocr_service.extract_amount(text_for_extraction)
+            if amount_result:
+                self.suggested_currency, self.suggested_amount = amount_result
+            else:
+                self.suggested_currency = "EUR"
+                self.suggested_amount = ""
 
             # Reset attachment selection
             self.selected_attachment_index = 0 if email.attachments else -1
         else:
             self.suggested_date = ""
             self.suggested_description = ""
+            self.suggested_currency = "EUR"
+            self.suggested_amount = ""
             self.selected_attachment_index = -1
-
-    def _extract_description(self, sender: str) -> str:
-        """Extract description from sender address.
-
-        Uses domain name (e.g., amazon.de -> amazon) as it's usually
-        more meaningful than the local part (e.g., rechnung).
-
-        Args:
-            sender: Email sender address.
-
-        Returns:
-            Cleaned description suitable for filename.
-        """
-        if not sender:
-            return ""
-
-        # Extract domain from email address
-        match = re.search(r"@([^>]+)", sender)
-        if match:
-            domain = match.group(1)
-            # Remove TLD (.de, .com, etc.)
-            domain = domain.split(".")[0]
-        else:
-            # Fallback to full sender
-            domain = sender
-
-        # Clean up
-        desc = domain.lower()
-        desc = re.sub(r"[^a-z0-9äöüß]+", "_", desc)
-        desc = desc.strip("_")[:30]
-
-        return desc
 
     def clear(self) -> None:
         """Clear all state for fresh start."""
         self._emails = []
         self._selected_email = None
         self._current_email = None
+        self._filter_query = ""
         self.suggested_date = ""
         self.suggested_description = ""
+        self.suggested_currency = "EUR"
+        self.suggested_amount = ""
         self.selected_attachment_index = -1
+        self.ki_extraction_running = False
+        self._cache.clear()
+
+    def set_current_folder(self, folder: str) -> None:
+        """Set current IMAP folder for cache operations.
+
+        Args:
+            folder: IMAP folder name (e.g., "INBOX").
+        """
+        self._current_folder = folder
+
+    def get_cached_email(self, uid: int) -> EmailMessage | None:
+        """Get email from cache if available.
+
+        Args:
+            uid: Email UID.
+
+        Returns:
+            EmailMessage if cached, None otherwise.
+        """
+        return self._cache.get(self._current_folder, uid)
+
+    def cache_email(self, email: EmailMessage) -> None:
+        """Store email in cache.
+
+        Args:
+            email: EmailMessage to cache.
+        """
+        self._cache.put(self._current_folder, email.uid, email)
+
+    def invalidate_cached_email(self, uid: int) -> None:
+        """Remove email from cache (e.g., after moving).
+
+        Args:
+            uid: Email UID to remove.
+        """
+        self._cache.remove(self._current_folder, uid)
+
+    def get_next_email_uid(self, current_index: int) -> int | None:
+        """Get UID of next email in filtered list for prefetching.
+
+        Args:
+            current_index: Current email index in filtered list.
+
+        Returns:
+            UID of next email, or None if at end of list.
+        """
+        filtered = self.filtered_emails
+        next_index = current_index + 1
+        if next_index < len(filtered):
+            return filtered[next_index].uid
+        return None
+
+    def _strip_html(self, html: str | None) -> str:
+        """Strip HTML tags and return plain text.
+
+        Simple regex-based HTML stripping for extraction purposes.
+
+        Args:
+            html: HTML string or None.
+
+        Returns:
+            Plain text with HTML tags removed.
+        """
+        import re
+
+        if not html:
+            return ""
+        # Remove script and style elements
+        text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        # Remove HTML tags
+        text = re.sub(r"<[^>]+>", " ", text)
+        # Decode common HTML entities
+        text = text.replace("&nbsp;", " ")
+        text = text.replace("&amp;", "&")
+        text = text.replace("&lt;", "<")
+        text = text.replace("&gt;", ">")
+        text = text.replace("&quot;", '"')
+        text = text.replace("&#39;", "'")
+        # Collapse whitespace
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()

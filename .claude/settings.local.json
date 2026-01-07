@@ -7,9 +7,12 @@
       "Bash(echo:*)",
       "Bash(PYTHONPATH=src uv run python:*)",
       "Bash(wc:*)",
-      "Bash(uv pip list:*)"
+      "Bash(uv pip list:*)",
+      "Bash(python3:*)",
+      "mcp__tributary"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enableAllProjectMcpServers": true
 }

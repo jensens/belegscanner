@@ -26,3 +26,39 @@ OCR_THRESHOLDS = [30, 40, 50, 60, 70, 80]
 DEFAULT_IMAP_PORT = 993
 DEFAULT_IMAP_INBOX = "Rechnungseingang"
 DEFAULT_IMAP_ARCHIVE = "Rechnungseingang/archiviert"
+
+# Vendor extraction settings
+# Terms that don't identify a vendor (blacklisted)
+VENDOR_BLACKLIST = {
+    # Deutsche Begriffe (Rechnungs-bezogen)
+    "rechnung", "bestellung", "beleg", "quittung", "lieferung",
+    "zahlung", "mahnung", "erinnerung", "benachrichtigung",
+    # Deutsche Begriffe (allgemein)
+    "ihre", "ihr", "ihre", "wichtige", "wichtig", "mitteilung",
+    "neue", "aktualisierung", "bestätigung",
+    # Englische Begriffe (Rechnungs-bezogen)
+    "invoice", "receipt", "billing", "order", "payment",
+    "notification", "confirmation", "reminder", "statement",
+    # Englische Begriffe (allgemein)
+    "your", "the", "new", "update", "important", "dear",
+    # Generische E-Mail-Begriffe
+    "noreply", "no-reply", "donotreply", "do-not-reply",
+    "newsletter", "info", "service", "support", "kontakt", "contact",
+    "mail", "email", "team", "admin", "system", "auto",
+    # Generische Domains
+    "gmail", "outlook", "yahoo", "hotmail", "gmx", "web", "posteo",
+    # Zahlungsdienstleister (nicht der eigentliche Lieferant)
+    "paypal", "stripe", "klarna", "giropay", "sofort",
+    # Eigene Firma
+    "kleinundpartner",
+}
+
+# Keywords that precede vendor names in email subjects
+# German: "Rechnung von X", "Bestellung bei X", "Zahlung an X"
+# English: "Invoice from X", "Payment to X"
+VENDOR_SUBJECT_KEYWORDS = ["von", "bei", "für", "durch", "an", "from", "by", "for", "to"]
+
+# Ollama settings (for AI-based extraction fallback)
+OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_MODEL = "phi3"
+OLLAMA_TIMEOUT = 30  # seconds

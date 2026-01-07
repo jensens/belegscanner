@@ -5,6 +5,6 @@ Erste Directive:
 - verwende WebSearch, wenn Du bei einem Problem nicht weiterkommst
 
 Pläne:
-- immer auch unter ./docs ablegen, immer PLAN_[THEMA].md
+- immer vorher unter ./docs ablegen, immer PLAN_[THEMA].md
 
 Dokumentation ist auch unter ./docs abzulegen. Ausgenommen davon sind Hilfetexte fùr das Programm.
