@@ -559,27 +559,35 @@ class EmailView(Gtk.Box):
         if self.imap and self.vm.is_connected:
             self.vm.is_busy = True
             self.vm.status = "Lade E-Mail..."
+            # Start fetch request tracking to prevent race conditions
+            request_id = self.vm.start_fetch_request(uid)
 
             def fetch_thread():
                 import time
                 print(f"[TIMING] fetch_thread START (cache miss): {time.time()}")
                 email = self.imap.fetch_email(uid, self.config.imap_inbox)
                 print(f"[TIMING] fetch_thread after fetch_email: {time.time()}")
-                GLib.idle_add(self._on_email_fetched, email)
+                GLib.idle_add(self._on_email_fetched, email, request_id)
 
             thread = threading.Thread(target=fetch_thread, daemon=True)
             thread.start()
 
-    def _on_email_fetched(self, email):
-        """Handle email fetch completion."""
+    def _on_email_fetched(self, email, request_id: int):
+        """Handle email fetch completion.
+
+        Args:
+            email: The fetched EmailMessage or None on error.
+            request_id: The request ID from start_fetch_request.
+        """
         import time
         print(f"[TIMING] _on_email_fetched START: {time.time()}")
         self.vm.is_busy = False
 
         if email:
-            # Store in cache for future access
-            self.vm.cache_email(email)
-            self.vm.set_current_email(email)
+            # Complete the fetch request - rejected if user selected another email
+            if not self.vm.complete_fetch_request(request_id, email):
+                print(f"[TIMING] Stale request {request_id} rejected")
+                return  # Stale request, ignore
             self._update_details()
             self.vm.status = "Bereit"
         else:
