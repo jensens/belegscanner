@@ -64,6 +64,9 @@ class EmailViewModel(GObject.Object):
         self._cache = EmailCache(max_size=20)
         self._ocr_service = OcrService()
         self._vendor_extractor = VendorExtractor()
+        # Fetch request tracking to prevent race conditions
+        self._fetch_request_id: int = 0
+        self._current_fetch_request: int | None = None
 
     @property
     def emails(self) -> list[EmailSummary]:
@@ -189,6 +192,8 @@ class EmailViewModel(GObject.Object):
         self.selected_attachment_index = -1
         self.ki_extraction_running = False
         self._cache.clear()
+        # Reset fetch request tracking - invalidates any pending requests
+        self._current_fetch_request = None
 
     def set_current_folder(self, folder: str) -> None:
         """Set current IMAP folder for cache operations.
@@ -224,6 +229,50 @@ class EmailViewModel(GObject.Object):
             uid: Email UID to remove.
         """
         self._cache.remove(self._current_folder, uid)
+
+    def start_fetch_request(self, uid: int) -> int:
+        """Start a new fetch request and return its unique ID.
+
+        Each call increments the request counter. Only the most recent
+        request ID is considered valid, preventing race conditions when
+        the user rapidly switches between emails.
+
+        Args:
+            uid: Email UID being fetched (for future tracking if needed).
+
+        Returns:
+            Unique request ID to pass to complete_fetch_request.
+        """
+        self._fetch_request_id += 1
+        self._current_fetch_request = self._fetch_request_id
+        return self._fetch_request_id
+
+    def complete_fetch_request(self, request_id: int, email: EmailMessage) -> bool:
+        """Complete a fetch request if it's still valid.
+
+        A request is valid only if its ID matches the most recent request.
+        If valid, sets the current email and caches it.
+
+        Args:
+            request_id: ID returned by start_fetch_request.
+            email: The fetched EmailMessage.
+
+        Returns:
+            True if request was accepted, False if stale/rejected.
+        """
+        if request_id != self._current_fetch_request:
+            return False
+        self.cache_email(email)
+        self.set_current_email(email)
+        return True
+
+    def cancel_fetch_request(self) -> None:
+        """Cancel any pending fetch request.
+
+        Makes the current request ID invalid so pending callbacks
+        will be rejected.
+        """
+        self._current_fetch_request = None
 
     def get_next_email_uid(self, current_index: int) -> int | None:
         """Get UID of next email in filtered list for prefetching.
