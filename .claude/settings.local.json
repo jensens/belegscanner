@@ -9,7 +9,9 @@
       "Bash(wc:*)",
       "Bash(uv pip list:*)",
       "Bash(python3:*)",
-      "mcp__tributary"
+      "mcp__tributary",
+      "Bash(gh issue edit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

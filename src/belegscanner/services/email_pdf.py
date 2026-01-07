@@ -96,7 +96,8 @@ class EmailPdfService:
         else:
             # Wrap plain text in <pre> for formatting preservation
             body_escaped = html.escape(body_text)
-            body_content = f'<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: monospace;">{body_escaped}</pre>'
+            pre_style = "white-space: pre-wrap; word-wrap: break-word; font-family: monospace;"
+            body_content = f'<pre style="{pre_style}">{body_escaped}</pre>'
 
         return f"""<!DOCTYPE html>
 <html lang="de">
@@ -109,7 +110,7 @@ class EmailPdfService:
             margin: 2cm;
         }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial;
             font-size: 11pt;
             line-height: 1.5;
             color: #333;
