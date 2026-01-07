@@ -1,9 +1,8 @@
 """Tests for ScannerService."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 import subprocess
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from belegscanner.services.scanner import ScannerService
 

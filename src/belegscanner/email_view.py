@@ -86,7 +86,7 @@ class EmailView(Gtk.Box):
 
         # Prefetch state
         self._prefetch_thread: threading.Thread | None = None
-        self._prefetch_pending_uid: int | None = None
+        # Note: Prefetch UID is now tracked in ViewModel (RC7)
         self._imap_credentials: tuple[str, str] | None = None  # (user, password)
 
         # Build UI
@@ -559,6 +559,12 @@ class EmailView(Gtk.Box):
             self.vm.status = "Bereit"
             return
 
+        # RC7: Check if prefetch is already running for this email
+        if self.vm.is_prefetch_pending_for(uid):
+            # Prefetch already running, don't start duplicate fetch
+            self.vm.status = "Lade E-Mail..."
+            return
+
         # Cache miss - fetch from server
         if self.imap and self.vm.is_connected:
             self.vm.increment_busy()
@@ -672,6 +678,12 @@ class EmailView(Gtk.Box):
         if not email:
             self.webview.load_html("<html><body></body></html>", None)
             return
+
+        # RC8: Guard - verify this is still the current email before loading
+        # This prevents loading stale content if selection changed during processing
+        current = self.vm.current_email
+        if current is None or current.uid != email.uid:
+            return  # Selection changed, don't load stale content
 
         # Prefer HTML, fallback to plain text
         if email.body_html:
@@ -865,9 +877,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
                 if success:
                     GLib.idle_add(self._on_archive_success, archived_uid)
                 else:
-                    GLib.idle_add(
-                        self._on_process_failed, "E-Mail konnte nicht verschoben werden."
-                    )
+                    GLib.idle_add(self._on_process_failed, "E-Mail konnte nicht verschoben werden.")
             except Exception as e:
                 GLib.idle_add(self._on_process_failed, str(e))
 
@@ -1063,7 +1073,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         if not self.imap:
             return
 
-        self._prefetch_pending_uid = uid
+        # RC7: Track prefetch in ViewModel (replaces local _prefetch_pending_uid)
+        self.vm.start_prefetch(uid)
         import time
 
         print(f"[TIMING] _start_prefetch for UID {uid}: {time.time()}")
@@ -1074,7 +1085,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
                 GLib.idle_add(self._on_prefetch_complete, email)
             else:
                 # Prefetch failed - just clear pending state
-                GLib.idle_add(self._on_prefetch_failed)
+                GLib.idle_add(self._on_prefetch_failed, uid)
 
         self._prefetch_thread = threading.Thread(target=prefetch_thread, daemon=True)
         self._prefetch_thread.start()
@@ -1083,6 +1094,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         """Handle prefetch completion.
 
         Stores the prefetched email in cache for quick access.
+        If this is the currently selected email, updates the UI.
 
         Args:
             email: Prefetched EmailMessage.
@@ -1090,12 +1102,25 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         import time
 
         print(f"[TIMING] _on_prefetch_complete for UID {email.uid}: {time.time()}")
+        # RC7: Clear prefetch status in ViewModel
+        self.vm.complete_prefetch(email.uid)
         self.vm.cache_email(email)
-        self._prefetch_pending_uid = None
 
-    def _on_prefetch_failed(self):
-        """Handle prefetch failure - just clear state."""
-        self._prefetch_pending_uid = None
+        # RC7: If this is the currently selected email, update the UI
+        selected = self.vm.selected_email
+        if selected and selected.uid == email.uid:
+            self.vm.set_current_email(email)
+            self._update_details()
+            self.vm.status = "Bereit"
+
+    def _on_prefetch_failed(self, uid: int):
+        """Handle prefetch failure - just clear state.
+
+        Args:
+            uid: UID of the failed prefetch.
+        """
+        # RC7: Clear prefetch status in ViewModel
+        self.vm.complete_prefetch(uid)
 
     def _on_ki_extract_clicked(self, button):
         """Handle KI-Extraktion button click."""

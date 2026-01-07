@@ -1,8 +1,7 @@
 """Tests for OcrService."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from belegscanner.services.ocr import OcrService
 
@@ -437,7 +436,9 @@ class TestFindBestThreshold:
 
     @patch("belegscanner.services.ocr.os.remove")
     @patch("belegscanner.services.ocr.subprocess.run")
-    def test_calls_convert_with_thresholds(self, mock_run: MagicMock, mock_remove: MagicMock, tmp_path: Path):
+    def test_calls_convert_with_thresholds(
+        self, mock_run: MagicMock, mock_remove: MagicMock, tmp_path: Path
+    ):
         """Call ImageMagick convert with each threshold."""
         service = OcrService()
         image_path = tmp_path / "test.png"
@@ -454,7 +455,9 @@ class TestFindBestThreshold:
 
     @patch("belegscanner.services.ocr.os.remove")
     @patch("belegscanner.services.ocr.subprocess.run")
-    def test_calls_tesseract_for_each_threshold(self, mock_run: MagicMock, mock_remove: MagicMock, tmp_path: Path):
+    def test_calls_tesseract_for_each_threshold(
+        self, mock_run: MagicMock, mock_remove: MagicMock, tmp_path: Path
+    ):
         """Call tesseract for each threshold variant."""
         service = OcrService()
         image_path = tmp_path / "test.png"
@@ -470,7 +473,9 @@ class TestFindBestThreshold:
 
     @patch("belegscanner.services.ocr.os.remove")
     @patch("belegscanner.services.ocr.subprocess.run")
-    def test_returns_text_with_most_characters(self, mock_run: MagicMock, mock_remove: MagicMock, tmp_path: Path):
+    def test_returns_text_with_most_characters(
+        self, mock_run: MagicMock, mock_remove: MagicMock, tmp_path: Path
+    ):
         """Return OCR result with most characters."""
         service = OcrService()
         image_path = tmp_path / "test.png"
@@ -495,7 +500,9 @@ class TestFindBestThreshold:
 
     @patch("belegscanner.services.ocr.os.remove")
     @patch("belegscanner.services.ocr.subprocess.run")
-    def test_cleans_up_temporary_files(self, mock_run: MagicMock, mock_remove: MagicMock, tmp_path: Path):
+    def test_cleans_up_temporary_files(
+        self, mock_run: MagicMock, mock_remove: MagicMock, tmp_path: Path
+    ):
         """Remove temporary threshold images after processing."""
         service = OcrService()
         image_path = tmp_path / "test.png"

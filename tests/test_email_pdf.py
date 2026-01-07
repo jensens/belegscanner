@@ -3,8 +3,6 @@
 from datetime import datetime
 from pathlib import Path
 
-import pytest
-
 from belegscanner.services.email_pdf import EmailPdfService
 
 
