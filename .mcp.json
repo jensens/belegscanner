@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "tributary": {
+      "command": "/home/jensens/ws/kup/tributary/.venv/bin/trib",
+      "args": [
+        "serve"
+      ],
+      "cwd": "/home/jensens/ws/kup/belegscanner"
+    }
+  }
+}

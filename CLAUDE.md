@@ -8,3 +8,5 @@ Pläne:
 - immer vorher unter ./docs ablegen, immer PLAN_[THEMA].md
 
 Dokumentation ist auch unter ./docs abzulegen. Ausgenommen davon sind Hilfetexte fùr das Programm.
+
+Tests in den Worktrees laufen lassen mit `uv sync --all-extras && uv run pytest [...]`.
