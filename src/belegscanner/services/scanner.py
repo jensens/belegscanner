@@ -3,7 +3,7 @@
 import subprocess
 from pathlib import Path
 
-from belegscanner.constants import DEFAULT_RESOLUTION, DEFAULT_SCAN_MODE
+from belegscanner.constants import DEFAULT_RESOLUTION, DEFAULT_SCAN_MODE, VALID_SCAN_MODES
 
 
 class ScannerService:
@@ -23,6 +23,11 @@ class ScannerService:
             resolution: Scan resolution in DPI (default: 300)
             mode: Scan mode, e.g., "True Gray", "Color" (default: "True Gray")
         """
+        if mode not in VALID_SCAN_MODES:
+            raise ValueError(
+                f"Ungueltiger Scan-Modus: '{mode}'. "
+                f"Erlaubt: {', '.join(sorted(VALID_SCAN_MODES))}"
+            )
         self.resolution = resolution
         self.mode = mode
 

@@ -17,6 +17,7 @@ CATEGORIES = {
 # Scanner settings
 DEFAULT_RESOLUTION = 300
 DEFAULT_SCAN_MODE = "True Gray"
+VALID_SCAN_MODES = frozenset({"True Gray", "Color", "Lineart", "Gray"})
 
 # OCR settings
 OCR_LANGUAGE = "deu"
