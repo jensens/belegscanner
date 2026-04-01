@@ -65,6 +65,8 @@ class EmailViewModel(GObject.Object):
         self._current_fetch_request: int | None = None
         # Busy counter for tracking multiple concurrent operations
         self._busy_count: int = 0
+        # Prefetch tracking to prevent duplicate fetches (RC7)
+        self._prefetch_pending_uid: int | None = None
 
     @property
     def emails(self) -> list[EmailSummary]:
@@ -193,6 +195,8 @@ class EmailViewModel(GObject.Object):
         self._cache.clear()
         # Reset fetch request tracking - invalidates any pending requests
         self._current_fetch_request = None
+        # Reset prefetch tracking (RC7)
+        self._prefetch_pending_uid = None
 
     def set_current_folder(self, folder: str) -> None:
         """Set current IMAP folder for cache operations.
@@ -313,6 +317,44 @@ class EmailViewModel(GObject.Object):
         if next_index < len(filtered):
             return filtered[next_index].uid
         return None
+
+    def start_prefetch(self, uid: int) -> None:
+        """Mark a prefetch as pending for given UID.
+
+        Call this when starting a background prefetch. This allows
+        other code to check if a prefetch is already in progress
+        to avoid duplicate fetches.
+
+        Args:
+            uid: Email UID being prefetched.
+        """
+        self._prefetch_pending_uid = uid
+
+    def complete_prefetch(self, uid: int) -> None:
+        """Mark prefetch as complete for given UID.
+
+        Only clears pending state if the UID matches, to handle
+        the case where a new prefetch started before this one completed.
+
+        Args:
+            uid: Email UID that was prefetched.
+        """
+        if self._prefetch_pending_uid == uid:
+            self._prefetch_pending_uid = None
+
+    def is_prefetch_pending_for(self, uid: int) -> bool:
+        """Check if prefetch is pending for given UID.
+
+        Used to avoid starting a duplicate fetch when the user selects
+        an email that's already being prefetched.
+
+        Args:
+            uid: Email UID to check.
+
+        Returns:
+            True if prefetch is pending for this UID.
+        """
+        return self._prefetch_pending_uid == uid
 
     def _strip_html(self, html: str | None) -> str:
         """Strip HTML tags and return plain text.

@@ -1,6 +1,5 @@
 """Tests for CredentialService."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 from belegscanner.services.credential import CredentialService

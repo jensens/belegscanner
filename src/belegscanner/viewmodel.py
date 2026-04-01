@@ -40,9 +40,7 @@ class ScanViewModel(GObject.Object):
     suggested_vendor = GObject.Property(type=str, default=None, nick="suggested-vendor")
     suggested_currency = GObject.Property(type=str, default="EUR", nick="suggested-currency")
     suggested_amount = GObject.Property(type=str, default=None, nick="suggested-amount")
-    ki_extraction_running = GObject.Property(
-        type=bool, default=False, nick="ki-extraction-running"
-    )
+    ki_extraction_running = GObject.Property(type=bool, default=False, nick="ki-extraction-running")
 
     def __init__(self):
         """Initialize ViewModel with empty state."""

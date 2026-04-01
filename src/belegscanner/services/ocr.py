@@ -65,11 +65,34 @@ class OcrService:
         return None
 
     # Known currency codes (only these are recognized, not arbitrary 3-letter codes)
-    KNOWN_CURRENCIES = frozenset([
-        "EUR", "USD", "CHF", "GBP", "JPY", "CAD", "AUD", "NZD",
-        "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "BGN",
-        "HRK", "RUB", "TRY", "BRL", "MXN", "INR", "CNY", "KRW",
-    ])
+    KNOWN_CURRENCIES = frozenset(
+        [
+            "EUR",
+            "USD",
+            "CHF",
+            "GBP",
+            "JPY",
+            "CAD",
+            "AUD",
+            "NZD",
+            "SEK",
+            "NOK",
+            "DKK",
+            "PLN",
+            "CZK",
+            "HUF",
+            "RON",
+            "BGN",
+            "HRK",
+            "RUB",
+            "TRY",
+            "BRL",
+            "MXN",
+            "INR",
+            "CNY",
+            "KRW",
+        ]
+    )
 
     def extract_amount(self, text: str | None) -> tuple[str, str] | None:
         """Extract amount and currency from OCR text.
@@ -152,7 +175,7 @@ class OcrService:
             match = re.search(keyword, line, re.IGNORECASE)
             if match:
                 # Search only in text after the keyword
-                text_after = line[match.end():]
+                text_after = line[match.end() :]
                 amount_match = re.search(amount_pattern, text_after, re.IGNORECASE)
                 if amount_match:
                     return parse_amount(amount_match)

@@ -163,10 +163,7 @@ class ConfigManager:
     @property
     def imap_archive(self) -> str:
         """Get IMAP archive folder name (default: Rechnungseingang/archiviert)."""
-        return (
-            self._get_value("IMAP_ARCHIVE", DEFAULT_IMAP_ARCHIVE)
-            or DEFAULT_IMAP_ARCHIVE
-        )
+        return self._get_value("IMAP_ARCHIVE", DEFAULT_IMAP_ARCHIVE) or DEFAULT_IMAP_ARCHIVE
 
     @imap_archive.setter
     def imap_archive(self, value: str) -> None:

@@ -459,3 +459,122 @@ class TestImapConnectionGuard:
         assert result is True
         # Verify move_email was called with captured uid (100), not changed uid (999)
         view.imap.move_email.assert_called_once_with(100, "INBOX", "Archive")
+
+
+class TestPrefetchCoordination:
+    """Tests for RC7: Prefetch coordination.
+
+    These tests verify that prefetch status is tracked properly to prevent
+    duplicate fetches when user selects an email that's already being prefetched.
+    """
+
+    def test_prefetch_pending_tracking(self):
+        """Can track pending prefetch."""
+        vm = EmailViewModel()
+
+        vm.start_prefetch(100)
+
+        assert vm.is_prefetch_pending_for(100) is True
+        assert vm.is_prefetch_pending_for(200) is False
+
+    def test_complete_prefetch_clears_pending(self):
+        """Completing prefetch clears pending state."""
+        vm = EmailViewModel()
+
+        vm.start_prefetch(100)
+        vm.complete_prefetch(100)
+
+        assert vm.is_prefetch_pending_for(100) is False
+
+    def test_complete_wrong_prefetch_keeps_pending(self):
+        """Completing wrong UID keeps original pending."""
+        vm = EmailViewModel()
+
+        vm.start_prefetch(100)
+        vm.complete_prefetch(200)  # Wrong UID
+
+        assert vm.is_prefetch_pending_for(100) is True
+
+    def test_new_prefetch_replaces_old(self):
+        """Starting new prefetch replaces old one."""
+        vm = EmailViewModel()
+
+        vm.start_prefetch(100)
+        vm.start_prefetch(200)
+
+        assert vm.is_prefetch_pending_for(100) is False
+        assert vm.is_prefetch_pending_for(200) is True
+
+    def test_initially_no_prefetch_pending(self):
+        """No prefetch pending initially."""
+        vm = EmailViewModel()
+
+        assert vm.is_prefetch_pending_for(100) is False
+
+    def test_clear_resets_prefetch_state(self):
+        """Clearing ViewModel resets prefetch tracking."""
+        vm = EmailViewModel()
+        vm.start_prefetch(100)
+
+        vm.clear()
+
+        assert vm.is_prefetch_pending_for(100) is False
+
+
+class TestWebKitLoadGuard:
+    """Tests for RC8: WebKit load guard.
+
+    These tests verify that the WebKit load guard pattern correctly detects
+    when the current email has changed during processing.
+    """
+
+    def test_load_guard_checks_current_email(self):
+        """Load guard should verify email is still current."""
+        vm = EmailViewModel()
+        email = make_email(100)
+        vm.set_current_email(email)
+
+        # Capture snapshot (simulating what _update_body_preview should do)
+        snapshot_uid = email.uid
+
+        # Email changes before load
+        vm.set_current_email(make_email(200))
+
+        # Guard should detect mismatch
+        current = vm.current_email
+        should_load = current is not None and current.uid == snapshot_uid
+
+        assert should_load is False
+
+    def test_load_guard_allows_when_email_unchanged(self):
+        """Load guard should allow when email is still current."""
+        vm = EmailViewModel()
+        email = make_email(100)
+        vm.set_current_email(email)
+
+        # Capture snapshot
+        snapshot_uid = email.uid
+
+        # Email doesn't change
+        current = vm.current_email
+        should_load = current is not None and current.uid == snapshot_uid
+
+        assert should_load is True
+
+    def test_load_guard_blocks_when_email_cleared(self):
+        """Load guard should block when email becomes None."""
+        vm = EmailViewModel()
+        email = make_email(100)
+        vm.set_current_email(email)
+
+        # Capture snapshot
+        snapshot_uid = email.uid
+
+        # Email cleared (user deselects)
+        vm.set_current_email(None)
+
+        # Guard should detect
+        current = vm.current_email
+        should_load = current is not None and current.uid == snapshot_uid
+
+        assert should_load is False

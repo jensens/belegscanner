@@ -1,6 +1,5 @@
 """Tests for ConfigManager service."""
 
-import pytest
 from pathlib import Path
 
 from belegscanner.services.config import ConfigManager
@@ -238,9 +237,7 @@ class TestConfigManagerIsEmailConfigured:
 
     def test_returns_true_when_server_and_user_set(self, config_file: Path):
         """is_email_configured returns True when server and user are set."""
-        config_file.write_text(
-            "IMAP_SERVER=imap.example.com\nIMAP_USER=user@example.com\n"
-        )
+        config_file.write_text("IMAP_SERVER=imap.example.com\nIMAP_USER=user@example.com\n")
         manager = ConfigManager(config_file)
 
         assert manager.is_email_configured() is True
