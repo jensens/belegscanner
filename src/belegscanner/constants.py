@@ -43,7 +43,6 @@ VENDOR_BLACKLIST = {
     # Deutsche Begriffe (allgemein)
     "ihre",
     "ihr",
-    "ihre",
     "wichtige",
     "wichtig",
     "mitteilung",

@@ -107,14 +107,14 @@ class ImapService:
         if self._connection:
             try:
                 self._connection.logout()
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
             self._connection = None
 
         if self._prefetch_connection:
             try:
                 self._prefetch_connection.logout()
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
             self._prefetch_connection = None
 

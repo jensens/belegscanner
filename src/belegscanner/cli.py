@@ -84,15 +84,15 @@ Beispiel:
     # Get archive path
     archive_path = args.ablage or config.archive_path
     if not archive_path:
-        print("Fehler: Kein Ablage-Pfad konfiguriert.", file=sys.stderr)
-        print("Setze mit: scan-beleg --ablage /pfad/zu/ablage ...", file=sys.stderr)
+        print("Fehler: Kein Ablage-Pfad konfiguriert.", file=sys.stderr)  # noqa: T201
+        print("Setze mit: scan-beleg --ablage /pfad/zu/ablage ...", file=sys.stderr)  # noqa: T201
         return 1
 
     archive.base_path = archive_path
 
     # Check scanner
     if not scanner.is_available():
-        print("Fehler: Kein Scanner gefunden.", file=sys.stderr)
+        print("Fehler: Kein Scanner gefunden.", file=sys.stderr)  # noqa: T201
         return 1
 
     # Scan pages
@@ -102,14 +102,14 @@ Beispiel:
 
         for i in range(args.seiten):
             page_num = i + 1
-            print(f"Scanne Seite {page_num}/{args.seiten}...", end=" ", flush=True)
+            print(f"Scanne Seite {page_num}/{args.seiten}...", end=" ", flush=True)  # noqa: T201
 
             page_path = temp_path / f"page_{page_num:03d}.png"
             if scanner.scan_page(page_path):
                 pages.append(page_path)
-                print("OK")
+                print("OK")  # noqa: T201
             else:
-                print("FEHLER")
+                print("FEHLER")  # noqa: T201
                 return 1
 
             if i < args.seiten - 1:
@@ -120,20 +120,20 @@ Beispiel:
         description = args.beschreibung
 
         if not date_str or not description:
-            print("OCR läuft...", end=" ", flush=True)
+            print("OCR läuft...", end=" ", flush=True)  # noqa: T201
             text = ocr.find_best_threshold(pages[0])
 
             if not date_str:
                 date_str = ocr.extract_date(text)
                 if date_str:
-                    print(f"Datum: {date_str}", end=" ")
+                    print(f"Datum: {date_str}", end=" ")  # noqa: T201
 
             if not description:
                 description = ocr.extract_vendor(text)
                 if description:
-                    print(f"Beschreibung: {description}", end=" ")
+                    print(f"Beschreibung: {description}", end=" ")  # noqa: T201
 
-            print()
+            print()  # noqa: T201
 
         # Validate
         if not date_str:
@@ -145,20 +145,20 @@ Beispiel:
         try:
             receipt_date = datetime.strptime(date_str, "%d.%m.%Y")
         except ValueError:
-            print(f"Fehler: Ungültiges Datum '{date_str}'", file=sys.stderr)
+            print(f"Fehler: Ungültiges Datum '{date_str}'", file=sys.stderr)  # noqa: T201
             return 1
 
         # Create PDF
-        print("Erstelle PDF...", end=" ", flush=True)
+        print("Erstelle PDF...", end=" ", flush=True)  # noqa: T201
         pdf_path = temp_path / "output.pdf"
         if not pdf.create_pdf(pages, pdf_path):
-            print("FEHLER")
+            print("FEHLER")  # noqa: T201
             return 1
-        print("OK")
+        print("OK")  # noqa: T201
 
         # Archive
         category, is_cc = CATEGORIES[args.kategorie]
-        print(f"Archiviere nach {category}...", end=" ", flush=True)
+        print(f"Archiviere nach {category}...", end=" ", flush=True)  # noqa: T201
 
         try:
             final_path = archive.archive(
@@ -168,14 +168,14 @@ Beispiel:
                 category=category,
                 is_credit_card=is_cc,
             )
-            print("OK")
-            print(f"\nGespeichert: {final_path}")
+            print("OK")  # noqa: T201
+            print(f"\nGespeichert: {final_path}")  # noqa: T201
 
             if is_cc:
-                print("(Kreditkarte: Ablage im Folgemonat)")
+                print("(Kreditkarte: Ablage im Folgemonat)")  # noqa: T201
 
         except Exception as e:
-            print(f"FEHLER: {e}", file=sys.stderr)
+            print(f"FEHLER: {e}", file=sys.stderr)  # noqa: T201
             return 1
 
     return 0

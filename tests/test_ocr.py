@@ -414,7 +414,10 @@ class TestExtractAmount:
         The issue was: '2667 Prepaid' matched as '2667 PRE' currency.
         """
         service = OcrService()
-        text = """Receipt #2422-7882-2667 Prepaid extra usage, Individual plan Qty 1 €5.00 Total €5.00 Amount paid €5.00"""
+        text = (
+            "Receipt #2422-7882-2667 Prepaid extra usage,"
+            " Individual plan Qty 1 \u20ac5.00 Total \u20ac5.00 Amount paid \u20ac5.00"
+        )
 
         result = service.extract_amount(text)
 

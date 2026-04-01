@@ -261,7 +261,7 @@ class EmailView(Gtk.Box):
         # Category dropdown
         self.category_row = Adw.ComboRow(title="Kategorie")
         cat_model = Gtk.StringList()
-        for key, (name, is_cc) in CATEGORIES.items():
+        for _key, (name, is_cc) in CATEGORIES.items():
             suffix = " (Kreditkarte)" if is_cc else ""
             cat_model.append(f"{name}{suffix}")
         self.category_row.set_model(cat_model)
