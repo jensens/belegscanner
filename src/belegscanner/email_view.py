@@ -7,9 +7,11 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-# Disable WebKit sandbox to avoid "bwrap: Permission denied" errors
-# on systems without user namespace support
-os.environ["WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"] = "1"
+# WebKit sandbox requires user namespace support which is unavailable on some
+# Linux configurations (Flatpak, restricted kernels). Without this, WebKit
+# crashes with "bwrap: Permission denied". Only set if not already configured.
+if "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS" not in os.environ:
+    os.environ["WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"] = "1"
 
 import gi
 
