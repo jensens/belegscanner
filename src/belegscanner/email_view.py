@@ -20,7 +20,7 @@ gi.require_version("Adw", "1")
 gi.require_version("WebKit", "6.0")
 from gi.repository import Adw, GLib, Gtk, WebKit
 
-from belegscanner.constants import CATEGORIES
+from belegscanner.constants import CATEGORIES, CURRENCIES
 from belegscanner.email_viewmodel import EmailViewModel
 from belegscanner.services import (
     ArchiveService,
@@ -247,7 +247,7 @@ class EmailView(Gtk.Box):
         amount_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.currency_dropdown = Gtk.DropDown()
         currency_model = Gtk.StringList()
-        for currency in ["EUR", "USD", "CHF", "GBP"]:
+        for currency in CURRENCIES:
             currency_model.append(currency)
         self.currency_dropdown.set_model(currency_model)
         self.currency_dropdown.set_size_request(80, -1)
@@ -649,9 +649,8 @@ class EmailView(Gtk.Box):
         if self.vm.suggested_amount:
             display_amount = self.vm.suggested_amount.replace(".", ",")
             self.amount_row.set_text(display_amount)
-            currencies = ["EUR", "USD", "CHF", "GBP"]
-            if self.vm.suggested_currency in currencies:
-                self.currency_dropdown.set_selected(currencies.index(self.vm.suggested_currency))
+            if self.vm.suggested_currency in CURRENCIES:
+                self.currency_dropdown.set_selected(CURRENCIES.index(self.vm.suggested_currency))
         else:
             self.amount_row.set_text("")
             self.currency_dropdown.set_selected(0)  # Default EUR
@@ -948,8 +947,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             return
 
         # Get currency
-        currencies = ["EUR", "USD", "CHF", "GBP"]
-        currency = currencies[currency_idx] if currency_idx < len(currencies) else "EUR"
+        currency = CURRENCIES[currency_idx] if currency_idx < len(CURRENCIES) else "EUR"
 
         if not desc:
             self._show_error("Fehler", "Bitte Beschreibung eingeben.")
@@ -1174,9 +1172,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             display_amount = result.amount.replace(".", ",")
             self.amount_row.set_text(display_amount)
             if result.currency:
-                currencies = ["EUR", "USD", "CHF", "GBP"]
-                if result.currency in currencies:
-                    self.currency_dropdown.set_selected(currencies.index(result.currency))
+                if result.currency in CURRENCIES:
+                    self.currency_dropdown.set_selected(CURRENCIES.index(result.currency))
 
         if result.vendor and not self.desc_row.get_text():
             self.desc_row.set_text(result.vendor)

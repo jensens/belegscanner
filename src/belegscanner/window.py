@@ -11,7 +11,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk
 
-from belegscanner.constants import CATEGORIES
+from belegscanner.constants import CATEGORIES, CURRENCIES
 from belegscanner.email_view import EmailView
 from belegscanner.services import (
     ArchiveService,
@@ -219,7 +219,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         amount_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.currency_dropdown = Gtk.DropDown()
         currency_model = Gtk.StringList()
-        for currency in ["EUR", "USD", "CHF", "GBP"]:
+        for currency in CURRENCIES:
             currency_model.append(currency)
         self.currency_dropdown.set_model(currency_model)
         self.currency_dropdown.set_size_request(80, -1)
@@ -374,9 +374,8 @@ class BelegscannerWindow(Adw.ApplicationWindow):
             self.vm.suggested_currency = currency
             self.vm.suggested_amount = amount_value
             # Set currency dropdown
-            currencies = ["EUR", "USD", "CHF", "GBP"]
-            if currency in currencies:
-                self.currency_dropdown.set_selected(currencies.index(currency))
+            if currency in CURRENCIES:
+                self.currency_dropdown.set_selected(CURRENCIES.index(currency))
             # Set amount (convert to German format for display)
             display_amount = amount_value.replace(".", ",")
             self.amount_row.set_text(display_amount)
@@ -440,9 +439,8 @@ class BelegscannerWindow(Adw.ApplicationWindow):
             display_amount = result.amount.replace(".", ",")
             self.amount_row.set_text(display_amount)
             if result.currency:
-                currencies = ["EUR", "USD", "CHF", "GBP"]
-                if result.currency in currencies:
-                    self.currency_dropdown.set_selected(currencies.index(result.currency))
+                if result.currency in CURRENCIES:
+                    self.currency_dropdown.set_selected(CURRENCIES.index(result.currency))
             self.amount_hint.set_label(f"KI: {result.currency or 'EUR'} {display_amount}")
 
         if result.vendor and not self.desc_row.get_text():
@@ -529,8 +527,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
             return
 
         # Get currency
-        currencies = ["EUR", "USD", "CHF", "GBP"]
-        currency = currencies[currency_idx] if currency_idx < len(currencies) else "EUR"
+        currency = CURRENCIES[currency_idx] if currency_idx < len(CURRENCIES) else "EUR"
 
         # Validate description
         if not desc:

@@ -14,6 +14,9 @@ CATEGORIES = {
     "4": ("ER-KKCB", True),  # Kreditkarte CB -> +1 Monat
 }
 
+# Supported currencies for amount display
+CURRENCIES = ("EUR", "USD", "CHF", "GBP")
+
 # Scanner settings
 DEFAULT_RESOLUTION = 300
 DEFAULT_SCAN_MODE = "True Gray"
