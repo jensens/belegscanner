@@ -11,6 +11,7 @@ from gi.repository import GObject
 from belegscanner.services.email_cache import EmailCache
 from belegscanner.services.imap import EmailMessage, EmailSummary
 from belegscanner.services.ocr import OcrService
+from belegscanner.services.text import strip_html
 from belegscanner.services.vendor import VendorExtractor
 
 
@@ -163,7 +164,7 @@ class EmailViewModel(GObject.Object):
             )
 
             # Extract amount from email body text (or HTML if text is empty)
-            text_for_extraction = email.body_text or self._strip_html(email.body_html)
+            text_for_extraction = email.body_text or strip_html(email.body_html)
             amount_result = self._ocr_service.extract_amount(text_for_extraction)
             if amount_result:
                 self.suggested_currency, self.suggested_amount = amount_result
@@ -355,33 +356,3 @@ class EmailViewModel(GObject.Object):
             True if prefetch is pending for this UID.
         """
         return self._prefetch_pending_uid == uid
-
-    def _strip_html(self, html: str | None) -> str:
-        """Strip HTML tags and return plain text.
-
-        Simple regex-based HTML stripping for extraction purposes.
-
-        Args:
-            html: HTML string or None.
-
-        Returns:
-            Plain text with HTML tags removed.
-        """
-        import re
-
-        if not html:
-            return ""
-        # Remove script and style elements
-        text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-        # Remove HTML tags
-        text = re.sub(r"<[^>]+>", " ", text)
-        # Decode common HTML entities
-        text = text.replace("&nbsp;", " ")
-        text = text.replace("&amp;", "&")
-        text = text.replace("&lt;", "<")
-        text = text.replace("&gt;", ">")
-        text = text.replace("&quot;", '"')
-        text = text.replace("&#39;", "'")
-        # Collapse whitespace
-        text = re.sub(r"\s+", " ", text)
-        return text.strip()

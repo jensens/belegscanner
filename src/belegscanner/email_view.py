@@ -32,6 +32,7 @@ from belegscanner.services import (
     OllamaService,
 )
 from belegscanner.services.imap import EmailMessage
+from belegscanner.services.text import strip_html
 
 
 class EmailView(Gtk.Box):
@@ -1154,7 +1155,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         self.ki_btn.set_sensitive(False)
 
         # Use body_text if available, otherwise strip HTML from body_html
-        text_for_extraction = email.body_text or self._strip_html(email.body_html)
+        text_for_extraction = email.body_text or strip_html(email.body_html)
 
         def ki_thread():
             result = self.ollama.extract(text_for_extraction)
@@ -1179,31 +1180,3 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         if result.vendor and not self.desc_row.get_text():
             self.desc_row.set_text(result.vendor)
-
-    def _strip_html(self, html: str | None) -> str:
-        """Strip HTML tags and return plain text.
-
-        Args:
-            html: HTML string or None.
-
-        Returns:
-            Plain text with HTML tags removed.
-        """
-        import re
-
-        if not html:
-            return ""
-        # Remove script and style elements
-        text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-        # Remove HTML tags
-        text = re.sub(r"<[^>]+>", " ", text)
-        # Decode common HTML entities
-        text = text.replace("&nbsp;", " ")
-        text = text.replace("&amp;", "&")
-        text = text.replace("&lt;", "<")
-        text = text.replace("&gt;", ">")
-        text = text.replace("&quot;", '"')
-        text = text.replace("&#39;", "'")
-        # Collapse whitespace
-        text = re.sub(r"\s+", " ", text)
-        return text.strip()
