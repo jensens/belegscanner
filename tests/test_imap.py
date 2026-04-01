@@ -3,6 +3,8 @@
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from belegscanner.services.imap import (
     EmailAttachment,
     EmailMessage,
@@ -393,29 +395,99 @@ class TestImapServiceMoveEmail:
 class TestHasAttachmentsDetection:
     """Test attachment detection in BODYSTRUCTURE parsing."""
 
-    def test_has_attachments_true_with_pdf_attachment(self):
-        """has_attachments is True when BODYSTRUCTURE contains attachment disposition."""
+    @pytest.mark.parametrize(
+        "fetch_data, expected_has_attachments",
+        [
+            pytest.param(
+                (
+                    b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
+                    b'"Ihre Rechnung" '
+                    b'((NIL NIL "rechnung" "amazon.de")) '
+                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                    b'("APPLICATION" "PDF" ("NAME" "Rechnung.pdf") NIL NIL "BASE64" 5000 NIL '
+                    b'("ATTACHMENT" ("FILENAME" "Rechnung.pdf")) NIL NIL) "MIXED"))'
+                ),
+                True,
+                id="pdf_attachment_disposition",
+            ),
+            pytest.param(
+                (
+                    b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
+                    b'"Newsletter" '
+                    b'((NIL NIL "news" "example.com")) '
+                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL '
+                    b'"7BIT" 100 10 NIL NIL NIL NIL)'
+                    b'("TEXT" "HTML" NIL NIL NIL '
+                    b'"QUOTED-PRINTABLE" 500 20 NIL NIL NIL NIL) '
+                    b'"ALTERNATIVE"))'
+                ),
+                False,
+                id="multipart_alternative_no_attachment",
+            ),
+            pytest.param(
+                (
+                    b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
+                    b'"Kurze Nachricht" '
+                    b'((NIL NIL "sender" "example.com")) '
+                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b'BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") '
+                    b'NIL NIL "7BIT" 50 5 NIL NIL NIL NIL))'
+                ),
+                False,
+                id="plain_text_email",
+            ),
+            pytest.param(
+                (
+                    b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
+                    b'"Email mit Bild" '
+                    b'((NIL NIL "sender" "example.com")) '
+                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b'BODYSTRUCTURE (("TEXT" "HTML" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                    b'("IMAGE" "PNG" ("NAME" "logo.png") NIL NIL "BASE64" 5000 NIL '
+                    b'("INLINE" ("FILENAME" "logo.png")) NIL NIL) "RELATED"))'
+                ),
+                False,
+                id="inline_image_no_attachment",
+            ),
+            pytest.param(
+                (
+                    b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
+                    b'"Ihre Rechnung" '
+                    b'((NIL NIL "support" "domaindiscount24.com")) '
+                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b'BODYSTRUCTURE (("TEXT" "HTML" ("CHARSET" "utf-8") '
+                    b'NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                    b'("APPLICATION" "OCTET-STREAM" NIL NIL NIL "BASE64" 5000 NIL '
+                    b'(attachment ("FILENAME" "2025172897.pdf")) NIL NIL) "MIXED"))'
+                ),
+                True,
+                id="attachment_without_quotes",
+            ),
+            pytest.param(
+                (
+                    b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
+                    b'"Ihre Rechnung" '
+                    b'((NIL NIL "support" "example.com")) '
+                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
+                    b'("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 5000 NIL '
+                    b'NIL NIL NIL) "MIXED"))'
+                ),
+                True,
+                id="filename_in_bodystructure",
+            ),
+        ],
+    )
+    def test_has_attachments(self, fetch_data, expected_has_attachments):
+        """has_attachments is detected correctly from BODYSTRUCTURE."""
         with patch("imaplib.IMAP4_SSL") as mock_imap:
             mock_conn = MagicMock()
             mock_conn.login.return_value = ("OK", [])
             mock_conn.select.return_value = ("OK", [b"1"])
             mock_conn.search.return_value = ("OK", [b"1"])
-            # BODYSTRUCTURE with attachment disposition
-            mock_conn.fetch.return_value = (
-                "OK",
-                [
-                    (
-                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                        b'"Ihre Rechnung" '
-                        b'((NIL NIL "rechnung" "amazon.de")) '
-                        b"NIL NIL NIL NIL NIL NIL NIL) "
-                        b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                        b'("APPLICATION" "PDF" ("NAME" "Rechnung.pdf") NIL NIL "BASE64" 5000 NIL '
-                        b'("ATTACHMENT" ("FILENAME" "Rechnung.pdf")) NIL NIL) "MIXED"))',
-                    ),
-                    b")",
-                ],
-            )
+            mock_conn.fetch.return_value = ("OK", [(fetch_data,), b")"])
             mock_imap.return_value = mock_conn
 
             service = ImapService("imap.example.com")
@@ -423,164 +495,7 @@ class TestHasAttachmentsDetection:
             emails = service.list_emails("INBOX")
 
             assert len(emails) == 1
-            assert emails[0].has_attachments is True
-
-    def test_has_attachments_false_for_multipart_alternative(self):
-        """has_attachments is False for multipart/alternative (HTML+Text) without attachment."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.search.return_value = ("OK", [b"1"])
-            # BODYSTRUCTURE with multipart/alternative but NO attachment
-            mock_conn.fetch.return_value = (
-                "OK",
-                [
-                    (
-                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                        b'"Newsletter" '
-                        b'((NIL NIL "news" "example.com")) '
-                        b"NIL NIL NIL NIL NIL NIL NIL) "
-                        b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                        b'("TEXT" "HTML" NIL NIL NIL "QUOTED-PRINTABLE" 500 20 NIL NIL NIL NIL) "ALTERNATIVE"))',
-                    ),
-                    b")",
-                ],
-            )
-            mock_imap.return_value = mock_conn
-
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            emails = service.list_emails("INBOX")
-
-            assert len(emails) == 1
-            assert emails[0].has_attachments is False
-
-    def test_has_attachments_false_for_plain_text(self):
-        """has_attachments is False for simple text email."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.search.return_value = ("OK", [b"1"])
-            # Simple text email
-            mock_conn.fetch.return_value = (
-                "OK",
-                [
-                    (
-                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                        b'"Kurze Nachricht" '
-                        b'((NIL NIL "sender" "example.com")) '
-                        b"NIL NIL NIL NIL NIL NIL NIL) "
-                        b'BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 50 5 NIL NIL NIL NIL))',
-                    ),
-                    b")",
-                ],
-            )
-            mock_imap.return_value = mock_conn
-
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            emails = service.list_emails("INBOX")
-
-            assert len(emails) == 1
-            assert emails[0].has_attachments is False
-
-    def test_has_attachments_true_with_inline_disposition_ignored(self):
-        """has_attachments ignores inline images (only counts attachment disposition)."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.search.return_value = ("OK", [b"1"])
-            # BODYSTRUCTURE with inline image but no attachment
-            mock_conn.fetch.return_value = (
-                "OK",
-                [
-                    (
-                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                        b'"Email mit Bild" '
-                        b'((NIL NIL "sender" "example.com")) '
-                        b"NIL NIL NIL NIL NIL NIL NIL) "
-                        b'BODYSTRUCTURE (("TEXT" "HTML" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                        b'("IMAGE" "PNG" ("NAME" "logo.png") NIL NIL "BASE64" 5000 NIL '
-                        b'("INLINE" ("FILENAME" "logo.png")) NIL NIL) "RELATED"))',
-                    ),
-                    b")",
-                ],
-            )
-            mock_imap.return_value = mock_conn
-
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            emails = service.list_emails("INBOX")
-
-            assert len(emails) == 1
-            assert emails[0].has_attachments is False
-
-    def test_has_attachments_true_without_quotes(self):
-        """has_attachments detects attachment without quotes in BODYSTRUCTURE."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.search.return_value = ("OK", [b"1"])
-            # BODYSTRUCTURE with attachment but no quotes around disposition
-            mock_conn.fetch.return_value = (
-                "OK",
-                [
-                    (
-                        b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
-                        b'"Ihre Rechnung" '
-                        b'((NIL NIL "support" "domaindiscount24.com")) '
-                        b"NIL NIL NIL NIL NIL NIL NIL) "
-                        b'BODYSTRUCTURE (("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                        b'("APPLICATION" "OCTET-STREAM" NIL NIL NIL "BASE64" 5000 NIL '
-                        b'(attachment ("FILENAME" "2025172897.pdf")) NIL NIL) "MIXED"))',
-                    ),
-                    b")",
-                ],
-            )
-            mock_imap.return_value = mock_conn
-
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            emails = service.list_emails("INBOX")
-
-            assert len(emails) == 1
-            assert emails[0].has_attachments is True
-
-    def test_has_attachments_true_with_filename_in_bodystructure(self):
-        """has_attachments detects attachment via filename pattern in BODYSTRUCTURE."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.search.return_value = ("OK", [b"1"])
-            # BODYSTRUCTURE with filename but different disposition format
-            mock_conn.fetch.return_value = (
-                "OK",
-                [
-                    (
-                        b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
-                        b'"Ihre Rechnung" '
-                        b'((NIL NIL "support" "example.com")) '
-                        b"NIL NIL NIL NIL NIL NIL NIL) "
-                        b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                        b'("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 5000 NIL '
-                        b'NIL NIL NIL) "MIXED"))',
-                    ),
-                    b")",
-                ],
-            )
-            mock_imap.return_value = mock_conn
-
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            emails = service.list_emails("INBOX")
-
-            assert len(emails) == 1
-            assert emails[0].has_attachments is True
+            assert emails[0].has_attachments is expected_has_attachments
 
 
 class TestImapServicePrefetch:
