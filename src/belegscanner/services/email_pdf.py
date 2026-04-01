@@ -6,6 +6,10 @@ from pathlib import Path
 
 from weasyprint import HTML
 
+from belegscanner.log import get_logger
+
+logger = get_logger(__name__)
+
 
 class EmailPdfService:
     """Convert email content to PDF.
@@ -57,6 +61,7 @@ class EmailPdfService:
 
             return True
         except Exception:
+            logger.exception("E-Mail-PDF-Erstellung fehlgeschlagen: %s", output_path)
             return False
 
     def _generate_html(

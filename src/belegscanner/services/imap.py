@@ -9,6 +9,10 @@ from datetime import datetime
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 
+from belegscanner.log import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class EmailSummary:
@@ -99,6 +103,7 @@ class ImapService:
             self._connection = None
             return False, str(e)
         except Exception as e:
+            logger.warning("IMAP-Verbindung fehlgeschlagen: %s", e)
             self._connection = None
             return False, str(e)
 
@@ -107,15 +112,15 @@ class ImapService:
         if self._connection:
             try:
                 self._connection.logout()
-            except Exception:  # noqa: S110
-                pass
+            except Exception:
+                logger.debug("Fehler beim IMAP-Logout (ignoriert)")
             self._connection = None
 
         if self._prefetch_connection:
             try:
                 self._prefetch_connection.logout()
-            except Exception:  # noqa: S110
-                pass
+            except Exception:
+                logger.debug("Fehler beim IMAP-Logout (ignoriert)")
             self._prefetch_connection = None
 
     def connect_prefetch(self, username: str, password: str) -> bool:
@@ -140,6 +145,7 @@ class ImapService:
             self._prefetch_connection.login(username, password)
             return True
         except Exception:
+            logger.warning("Prefetch-Verbindung fehlgeschlagen")
             self._prefetch_connection = None
             return False
 
@@ -176,6 +182,7 @@ class ImapService:
 
                 return self._parse_email(uid, raw_email)
             except Exception:
+                logger.debug("Prefetch-Fetch fehlgeschlagen fuer UID %d", uid)
                 return None
 
     def _parse_email(self, uid: int, raw_email: bytes) -> EmailMessage | None:
@@ -201,6 +208,7 @@ class ImapService:
             try:
                 date = parsedate_to_datetime(date_str)
             except Exception:
+                logger.debug("Datum konnte nicht geparst werden: %s", date_str)
                 date = datetime.now()
 
             # Extract body and attachments
@@ -267,6 +275,7 @@ class ImapService:
                 attachments=attachments,
             )
         except Exception:
+            logger.debug("E-Mail-Parsing fehlgeschlagen fuer UID %d", uid)
             return None
 
     def list_folders(self) -> list[str]:
@@ -293,6 +302,7 @@ class ImapService:
                         folders.append(folder_name)
             return folders
         except Exception:
+            logger.debug("Ordnerliste konnte nicht abgerufen werden")
             return []
 
     def list_emails(self, folder: str) -> list[EmailSummary]:
@@ -344,6 +354,7 @@ class ImapService:
 
             return summaries
         except Exception:
+            logger.debug("E-Mail-Liste konnte nicht abgerufen werden")
             return []
 
     def _parse_envelope(self, data: bytes) -> EmailSummary | None:
@@ -370,6 +381,7 @@ class ImapService:
             try:
                 date = parsedate_to_datetime(date_str)
             except Exception:
+                logger.debug("Datum konnte nicht geparst werden: %s", date_str)
                 date = datetime.now()
 
             # Extract subject (second quoted string after date)
@@ -408,6 +420,7 @@ class ImapService:
                 has_attachments=has_attachments,
             )
         except Exception:
+            logger.debug("Envelope-Parsing fehlgeschlagen")
             return None
 
     def fetch_email(self, uid: int, folder: str) -> EmailMessage | None:
@@ -440,6 +453,7 @@ class ImapService:
 
             return self._parse_email(uid, raw_email)
         except Exception:
+            logger.debug("E-Mail-Fetch fehlgeschlagen fuer UID %d", uid)
             return None
 
     def _decode_header(self, value: str) -> str:
@@ -464,6 +478,7 @@ class ImapService:
                     result.append(data)
             return "".join(result)
         except Exception:
+            logger.debug("Header-Dekodierung fehlgeschlagen: %s", value)
             return value
 
     def move_email(self, uid: int, source_folder: str, target_folder: str) -> bool:
@@ -501,4 +516,5 @@ class ImapService:
 
             return True
         except Exception:
+            logger.warning("E-Mail-Verschiebung fehlgeschlagen fuer UID %d", uid)
             return False
