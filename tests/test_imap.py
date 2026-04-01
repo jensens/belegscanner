@@ -403,7 +403,7 @@ class TestHasAttachmentsDetection:
                     b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                     b'"Ihre Rechnung" '
                     b'((NIL NIL "rechnung" "amazon.de")) '
-                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b"NIL NIL NIL NIL NIL NIL NIL) "
                     b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                     b'("APPLICATION" "PDF" ("NAME" "Rechnung.pdf") NIL NIL "BASE64" 5000 NIL '
                     b'("ATTACHMENT" ("FILENAME" "Rechnung.pdf")) NIL NIL) "MIXED"))'
@@ -416,7 +416,7 @@ class TestHasAttachmentsDetection:
                     b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                     b'"Newsletter" '
                     b'((NIL NIL "news" "example.com")) '
-                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b"NIL NIL NIL NIL NIL NIL NIL) "
                     b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL '
                     b'"7BIT" 100 10 NIL NIL NIL NIL)'
                     b'("TEXT" "HTML" NIL NIL NIL '
@@ -431,7 +431,7 @@ class TestHasAttachmentsDetection:
                     b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                     b'"Kurze Nachricht" '
                     b'((NIL NIL "sender" "example.com")) '
-                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b"NIL NIL NIL NIL NIL NIL NIL) "
                     b'BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") '
                     b'NIL NIL "7BIT" 50 5 NIL NIL NIL NIL))'
                 ),
@@ -443,7 +443,7 @@ class TestHasAttachmentsDetection:
                     b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
                     b'"Email mit Bild" '
                     b'((NIL NIL "sender" "example.com")) '
-                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b"NIL NIL NIL NIL NIL NIL NIL) "
                     b'BODYSTRUCTURE (("TEXT" "HTML" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                     b'("IMAGE" "PNG" ("NAME" "logo.png") NIL NIL "BASE64" 5000 NIL '
                     b'("INLINE" ("FILENAME" "logo.png")) NIL NIL) "RELATED"))'
@@ -456,7 +456,7 @@ class TestHasAttachmentsDetection:
                     b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
                     b'"Ihre Rechnung" '
                     b'((NIL NIL "support" "domaindiscount24.com")) '
-                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b"NIL NIL NIL NIL NIL NIL NIL) "
                     b'BODYSTRUCTURE (("TEXT" "HTML" ("CHARSET" "utf-8") '
                     b'NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                     b'("APPLICATION" "OCTET-STREAM" NIL NIL NIL "BASE64" 5000 NIL '
@@ -470,7 +470,7 @@ class TestHasAttachmentsDetection:
                     b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
                     b'"Ihre Rechnung" '
                     b'((NIL NIL "support" "example.com")) '
-                    b'NIL NIL NIL NIL NIL NIL NIL) '
+                    b"NIL NIL NIL NIL NIL NIL NIL) "
                     b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
                     b'("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 5000 NIL '
                     b'NIL NIL NIL) "MIXED"))'

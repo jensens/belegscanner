@@ -408,9 +408,7 @@ class TestFindBestThreshold:
     """Test multi-threshold OCR functionality."""
 
     @patch("belegscanner.services.ocr.subprocess.run")
-    def test_calls_convert_with_thresholds(
-        self, mock_run: MagicMock, tmp_path: Path
-    ):
+    def test_calls_convert_with_thresholds(self, mock_run: MagicMock, tmp_path: Path):
         """Call ImageMagick convert with each threshold."""
         service = OcrService()
         image_path = tmp_path / "test.png"
@@ -426,9 +424,7 @@ class TestFindBestThreshold:
         assert len(convert_calls) == 6  # 30, 40, 50, 60, 70, 80
 
     @patch("belegscanner.services.ocr.subprocess.run")
-    def test_calls_tesseract_for_each_threshold(
-        self, mock_run: MagicMock, tmp_path: Path
-    ):
+    def test_calls_tesseract_for_each_threshold(self, mock_run: MagicMock, tmp_path: Path):
         """Call tesseract for each threshold variant."""
         service = OcrService()
         image_path = tmp_path / "test.png"
@@ -443,9 +439,7 @@ class TestFindBestThreshold:
         assert len(tesseract_calls) == 6
 
     @patch("belegscanner.services.ocr.subprocess.run")
-    def test_returns_text_with_most_characters(
-        self, mock_run: MagicMock, tmp_path: Path
-    ):
+    def test_returns_text_with_most_characters(self, mock_run: MagicMock, tmp_path: Path):
         """Return OCR result with most characters."""
         service = OcrService()
         image_path = tmp_path / "test.png"
@@ -469,9 +463,7 @@ class TestFindBestThreshold:
         assert result == "Even longer text result"
 
     @patch("belegscanner.services.ocr.subprocess.run")
-    def test_cleans_up_temporary_files(
-        self, mock_run: MagicMock, tmp_path: Path
-    ):
+    def test_cleans_up_temporary_files(self, mock_run: MagicMock, tmp_path: Path):
         """Remove temporary threshold images after processing."""
         service = OcrService()
         image_path = tmp_path / "test.png"

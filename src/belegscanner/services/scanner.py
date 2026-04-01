@@ -25,8 +25,7 @@ class ScannerService:
         """
         if mode not in VALID_SCAN_MODES:
             raise ValueError(
-                f"Ungueltiger Scan-Modus: '{mode}'. "
-                f"Erlaubt: {', '.join(sorted(VALID_SCAN_MODES))}"
+                f"Ungueltiger Scan-Modus: '{mode}'. Erlaubt: {', '.join(sorted(VALID_SCAN_MODES))}"
             )
         self.resolution = resolution
         self.mode = mode

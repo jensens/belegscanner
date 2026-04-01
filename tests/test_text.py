@@ -24,7 +24,7 @@ class TestStripHtml:
         assert "Text" in result
 
     def test_decodes_html_entities(self):
-        assert strip_html("&amp; &lt; &gt; &quot; &#39;") == '& < > " \''
+        assert strip_html("&amp; &lt; &gt; &quot; &#39;") == "& < > \" '"
 
     def test_decodes_nbsp(self):
         assert "hello world" in strip_html("hello&nbsp;world")
