@@ -34,9 +34,8 @@ class TestIsAvailable:
     @patch("belegscanner.services.ollama.urllib.request.urlopen")
     def test_returns_false_on_timeout(self, mock_urlopen: MagicMock):
         """Return False when request times out."""
-        import socket
 
-        mock_urlopen.side_effect = socket.timeout("timed out")
+        mock_urlopen.side_effect = TimeoutError("timed out")
 
         service = OllamaService()
 
@@ -52,7 +51,8 @@ class TestExtract:
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps(
             {
-                "response": '{"vendor": "REWE", "amount": "27.07", "currency": "EUR", "date": "15.11.2024"}'
+                "response": '{"vendor": "REWE", "amount": "27.07",'
+                ' "currency": "EUR", "date": "15.11.2024"}'
             }
         ).encode()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
@@ -123,7 +123,8 @@ class TestExtract:
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps(
             {
-                "response": '```json\n{"vendor": "Bauhaus", "amount": "50.00", "currency": "EUR", "date": null}\n```'
+                "response": '```json\n{"vendor": "Bauhaus", "amount": "50.00",'
+                ' "currency": "EUR", "date": null}\n```'
             }
         ).encode()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
