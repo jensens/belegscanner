@@ -7,6 +7,15 @@ name = "belegscanner"
 version = "0.1.0"
 description = "Scan receipts and archive them with OCR - GUI and CLI"
 requires-python = ">=3.12"
+license = {text = "Proprietary"}
+authors = [{name = "Klein und Partner KG"}]
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "python-dateutil>=2.9.0",
     "PyGObject>=3.46.0",
@@ -26,6 +35,10 @@ dev = [
     "ruff>=0.8.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/kup-org/belegscanner"
+Issues = "https://github.com/kup-org/belegscanner/issues"
+
 [project.gui-scripts]
 belegscanner = "belegscanner.app:main"
 
@@ -41,5 +54,13 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
-ignore = ["E402"]  # Module level imports - required for GTK gi.require_version()
+select = ["E", "F", "I", "N", "W", "B", "S", "T", "UP", "RUF"]
+ignore = [
+    "E402",   # Module level imports - required for GTK gi.require_version()
+    "S603",   # subprocess calls — we validate inputs where needed
+    "S607",   # partial executable paths — we use system tools (scanimage, convert, tesseract)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S108"]  # assert and hardcoded temp paths are fine in tests
+"src/belegscanner/email_view.py" = ["T201"]  # debug/timing prints (TODO: replace with logging)

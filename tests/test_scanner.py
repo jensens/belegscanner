@@ -4,6 +4,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from belegscanner.services.scanner import ScannerService
 
 
@@ -118,3 +120,14 @@ class TestScannerAvailable:
         result = service.is_available()
 
         assert result is False
+
+
+class TestScannerValidation:
+    def test_rejects_invalid_mode(self):
+        with pytest.raises(ValueError, match="Ungueltiger Scan-Modus"):
+            ScannerService(mode="'; rm -rf /")
+
+    def test_accepts_valid_modes(self):
+        for mode in ["True Gray", "Color", "Lineart", "Gray"]:
+            service = ScannerService(mode=mode)
+            assert service.mode == mode

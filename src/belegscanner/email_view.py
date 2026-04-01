@@ -7,9 +7,11 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-# Disable WebKit sandbox to avoid "bwrap: Permission denied" errors
-# on systems without user namespace support
-os.environ["WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"] = "1"
+# WebKit sandbox requires user namespace support which is unavailable on some
+# Linux configurations (Flatpak, restricted kernels). Without this, WebKit
+# crashes with "bwrap: Permission denied". Only set if not already configured.
+if "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS" not in os.environ:
+    os.environ["WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"] = "1"
 
 import gi
 
@@ -18,7 +20,7 @@ gi.require_version("Adw", "1")
 gi.require_version("WebKit", "6.0")
 from gi.repository import Adw, GLib, Gtk, WebKit
 
-from belegscanner.constants import CATEGORIES
+from belegscanner.constants import CATEGORIES, CURRENCIES
 from belegscanner.email_viewmodel import EmailViewModel
 from belegscanner.services import (
     ArchiveService,
@@ -30,6 +32,7 @@ from belegscanner.services import (
     OllamaService,
 )
 from belegscanner.services.imap import EmailMessage
+from belegscanner.services.text import strip_html
 
 
 class EmailView(Gtk.Box):
@@ -244,7 +247,7 @@ class EmailView(Gtk.Box):
         amount_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.currency_dropdown = Gtk.DropDown()
         currency_model = Gtk.StringList()
-        for currency in ["EUR", "USD", "CHF", "GBP"]:
+        for currency in CURRENCIES:
             currency_model.append(currency)
         self.currency_dropdown.set_model(currency_model)
         self.currency_dropdown.set_size_request(80, -1)
@@ -261,7 +264,7 @@ class EmailView(Gtk.Box):
         # Category dropdown
         self.category_row = Adw.ComboRow(title="Kategorie")
         cat_model = Gtk.StringList()
-        for key, (name, is_cc) in CATEGORIES.items():
+        for _key, (name, is_cc) in CATEGORIES.items():
             suffix = " (Kreditkarte)" if is_cc else ""
             cat_model.append(f"{name}{suffix}")
         self.category_row.set_model(cat_model)
@@ -646,9 +649,8 @@ class EmailView(Gtk.Box):
         if self.vm.suggested_amount:
             display_amount = self.vm.suggested_amount.replace(".", ",")
             self.amount_row.set_text(display_amount)
-            currencies = ["EUR", "USD", "CHF", "GBP"]
-            if self.vm.suggested_currency in currencies:
-                self.currency_dropdown.set_selected(currencies.index(self.vm.suggested_currency))
+            if self.vm.suggested_currency in CURRENCIES:
+                self.currency_dropdown.set_selected(CURRENCIES.index(self.vm.suggested_currency))
         else:
             self.amount_row.set_text("")
             self.currency_dropdown.set_selected(0)  # Default EUR
@@ -788,8 +790,11 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         att = email.attachments[idx]
 
-        # Save to temp file
-        temp_path = Path(self._temp_dir.name) / att.filename
+        # Save to temp file — sanitize filename to prevent path traversal
+        _raw = att.filename.replace("\\", "/")
+        _name = Path(_raw).name
+        safe_filename = _name if (_name and set(_name) != {"."}) else "attachment"
+        temp_path = Path(self._temp_dir.name) / safe_filename
         temp_path.write_bytes(att.data)
 
         # Open with system default viewer
@@ -942,8 +947,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             return
 
         # Get currency
-        currencies = ["EUR", "USD", "CHF", "GBP"]
-        currency = currencies[currency_idx] if currency_idx < len(currencies) else "EUR"
+        currency = CURRENCIES[currency_idx] if currency_idx < len(CURRENCIES) else "EUR"
 
         if not desc:
             self._show_error("Fehler", "Bitte Beschreibung eingeben.")
@@ -1149,7 +1153,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         self.ki_btn.set_sensitive(False)
 
         # Use body_text if available, otherwise strip HTML from body_html
-        text_for_extraction = email.body_text or self._strip_html(email.body_html)
+        text_for_extraction = email.body_text or strip_html(email.body_html)
 
         def ki_thread():
             result = self.ollama.extract(text_for_extraction)
@@ -1168,37 +1172,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             display_amount = result.amount.replace(".", ",")
             self.amount_row.set_text(display_amount)
             if result.currency:
-                currencies = ["EUR", "USD", "CHF", "GBP"]
-                if result.currency in currencies:
-                    self.currency_dropdown.set_selected(currencies.index(result.currency))
+                if result.currency in CURRENCIES:
+                    self.currency_dropdown.set_selected(CURRENCIES.index(result.currency))
 
         if result.vendor and not self.desc_row.get_text():
             self.desc_row.set_text(result.vendor)
-
-    def _strip_html(self, html: str | None) -> str:
-        """Strip HTML tags and return plain text.
-
-        Args:
-            html: HTML string or None.
-
-        Returns:
-            Plain text with HTML tags removed.
-        """
-        import re
-
-        if not html:
-            return ""
-        # Remove script and style elements
-        text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-        # Remove HTML tags
-        text = re.sub(r"<[^>]+>", " ", text)
-        # Decode common HTML entities
-        text = text.replace("&nbsp;", " ")
-        text = text.replace("&amp;", "&")
-        text = text.replace("&lt;", "<")
-        text = text.replace("&gt;", ">")
-        text = text.replace("&quot;", '"')
-        text = text.replace("&#39;", "'")
-        # Collapse whitespace
-        text = re.sub(r"\s+", " ", text)
-        return text.strip()

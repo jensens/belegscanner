@@ -96,22 +96,20 @@ class TestCreatePdf:
 
         assert result is False
 
-    @patch("belegscanner.services.pdf.os.path.exists")
-    @patch("belegscanner.services.pdf.os.remove")
     @patch("belegscanner.services.pdf.subprocess.run")
-    def test_cleans_up_temp_pdf(
-        self, mock_run: MagicMock, mock_remove: MagicMock, mock_exists: MagicMock, tmp_path: Path
-    ):
+    def test_cleans_up_temp_pdf(self, mock_run: MagicMock, tmp_path: Path):
         """Remove temporary PDF after ocrmypdf processing."""
         service = PdfService()
         page = tmp_path / "page.png"
         page.touch()
         output = tmp_path / "output.pdf"
+        temp_pdf = output.with_suffix(".temp.pdf")
 
+        # Create a real temp file so unlink has something to remove
+        temp_pdf.touch()
         mock_run.return_value = MagicMock(returncode=0)
-        mock_exists.return_value = True
 
         service.create_pdf([page], output)
 
-        # Should remove the temp PDF
-        assert mock_remove.called
+        # Temp PDF should have been cleaned up via Path.unlink(missing_ok=True)
+        assert not temp_pdf.exists()

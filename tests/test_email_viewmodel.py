@@ -616,7 +616,10 @@ class TestEmailViewModelAmountExtraction:
             subject="Ihre Rechnung",
             date=datetime(2024, 11, 15),
             message_id="<abc@amazon.de>",
-            body_text="Vielen Dank für Ihre Bestellung.\n\nGesamtbetrag: 47,99 EUR\n\nMit freundlichen Grüßen",
+            body_text=(
+                "Vielen Dank für Ihre Bestellung.\n\n"
+                "Gesamtbetrag: 47,99 EUR\n\nMit freundlichen Grüßen"
+            ),
             body_html=None,
             attachments=[],
         )

@@ -1,5 +1,9 @@
 """Credential management using system keyring (libsecret)."""
 
+from belegscanner.log import get_logger
+
+logger = get_logger(__name__)
+
 
 class CredentialService:
     """Password management via system keyring.
@@ -82,6 +86,7 @@ class CredentialService:
             )
             return True
         except Exception:
+            logger.exception("Keyring-Operation fehlgeschlagen fuer %s", username)
             return False
 
     def get_password(self, username: str) -> str | None:
@@ -108,6 +113,7 @@ class CredentialService:
                 None,
             )
         except Exception:
+            logger.exception("Keyring-Operation fehlgeschlagen fuer %s", username)
             return None
 
     def delete_password(self, username: str) -> bool:
@@ -134,4 +140,5 @@ class CredentialService:
                 None,
             )
         except Exception:
+            logger.exception("Keyring-Operation fehlgeschlagen fuer %s", username)
             return False

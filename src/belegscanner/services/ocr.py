@@ -1,12 +1,14 @@
 """OCR service for text extraction from scanned images."""
 
-import os
 import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
 from belegscanner.constants import OCR_LANGUAGE, OCR_THRESHOLDS
+from belegscanner.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class OcrService:
@@ -306,30 +308,34 @@ class OcrService:
             OCR text from the threshold that produced most output
         """
         best_text = ""
-        image_str = str(image_path)
 
         for threshold in self.thresholds:
             # Create threshold variant
-            temp_bw = image_str.replace(".png", f"_bw{threshold}.png")
-            subprocess.run(
-                ["convert", image_str, "-threshold", f"{threshold}%", temp_bw],
-                check=True,
-                capture_output=True,
-            )
+            temp_bw = image_path.with_stem(f"{image_path.stem}_bw{threshold}")
+            try:
+                subprocess.run(
+                    ["convert", str(image_path), "-threshold", f"{threshold}%", str(temp_bw)],
+                    check=True,
+                    capture_output=True,
+                )
+            except subprocess.CalledProcessError:
+                logger.warning("ImageMagick convert fehlgeschlagen bei Threshold %d%%", threshold)
+                continue
 
-            # Run OCR
-            result = subprocess.run(
-                ["tesseract", temp_bw, "stdout", "-l", self.language],
-                capture_output=True,
-                text=True,
-            )
-            text = result.stdout
+            try:
+                # Run OCR
+                result = subprocess.run(
+                    ["tesseract", str(temp_bw), "stdout", "-l", self.language],
+                    capture_output=True,
+                    text=True,
+                )
+                text = result.stdout
 
-            # Clean up temp file
-            os.remove(temp_bw)
-
-            # Keep best result
-            if len(text) > len(best_text):
-                best_text = text
+                # Keep best result
+                if len(text) > len(best_text):
+                    best_text = text
+            finally:
+                # Clean up temp file
+                temp_bw.unlink(missing_ok=True)
 
         return best_text

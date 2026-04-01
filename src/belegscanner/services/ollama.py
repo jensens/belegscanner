@@ -2,7 +2,6 @@
 
 import json
 import re
-import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -67,10 +66,10 @@ Antworte NUR mit JSON (keine Erklärung):
         """
         try:
             url = f"{self.host}/api/tags"
-            request = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(request, timeout=5) as response:
+            request = urllib.request.Request(url, method="GET")  # noqa: S310
+            with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
                 return response.status == 200
-        except (urllib.error.URLError, socket.timeout, OSError):
+        except (TimeoutError, urllib.error.URLError, OSError):
             return False
 
     def extract(self, ocr_text: str | None) -> ExtractionResult:
@@ -88,7 +87,7 @@ Antworte NUR mit JSON (keine Erklärung):
         try:
             response_text = self._call_ollama(ocr_text)
             return self._parse_response(response_text)
-        except (urllib.error.URLError, socket.timeout, OSError, json.JSONDecodeError):
+        except (TimeoutError, urllib.error.URLError, OSError, json.JSONDecodeError):
             return ExtractionResult(vendor=None, amount=None, currency=None, date=None)
 
     def _call_ollama(self, ocr_text: str) -> str:
@@ -109,14 +108,14 @@ Antworte NUR mit JSON (keine Erklärung):
             "stream": False,
         }
 
-        request = urllib.request.Request(
+        request = urllib.request.Request(  # noqa: S310
             url,
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
 
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
             result = json.loads(response.read().decode("utf-8"))
             return result.get("response", "")
 

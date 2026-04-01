@@ -14,9 +14,13 @@ CATEGORIES = {
     "4": ("ER-KKCB", True),  # Kreditkarte CB -> +1 Monat
 }
 
+# Supported currencies for amount display
+CURRENCIES = ("EUR", "USD", "CHF", "GBP")
+
 # Scanner settings
 DEFAULT_RESOLUTION = 300
 DEFAULT_SCAN_MODE = "True Gray"
+VALID_SCAN_MODES = frozenset({"True Gray", "Color", "Lineart", "Gray"})
 
 # OCR settings
 OCR_LANGUAGE = "deu"
@@ -43,7 +47,6 @@ VENDOR_BLACKLIST = {
     # Deutsche Begriffe (allgemein)
     "ihre",
     "ihr",
-    "ihre",
     "wichtige",
     "wichtig",
     "mitteilung",
