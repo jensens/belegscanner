@@ -788,8 +788,11 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         att = email.attachments[idx]
 
-        # Save to temp file
-        temp_path = Path(self._temp_dir.name) / att.filename
+        # Save to temp file — sanitize filename to prevent path traversal
+        _raw = att.filename.replace("\\", "/")
+        _name = Path(_raw).name
+        safe_filename = _name if (_name and set(_name) != {"."}) else "attachment"
+        temp_path = Path(self._temp_dir.name) / safe_filename
         temp_path.write_bytes(att.data)
 
         # Open with system default viewer
