@@ -2,12 +2,10 @@
 
 from datetime import datetime
 
-import pytest
-
-from belegscanner.services.imap import EmailAttachment, EmailMessage, EmailSummary
-
 # Import after mocking gi (if needed)
 import gi
+
+from belegscanner.services.imap import EmailAttachment, EmailMessage, EmailSummary
 
 gi.require_version("Gtk", "4.0")
 
@@ -259,22 +257,24 @@ class TestEmailViewModelFilter:
     def test_filter_by_sender(self):
         """Filter matches sender address."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(
-                uid=1,
-                sender="rechnung@amazon.de",
-                subject="Bestellung",
-                date=datetime(2024, 11, 15),
-                has_attachments=True,
-            ),
-            EmailSummary(
-                uid=2,
-                sender="newsletter@example.com",
-                subject="News",
-                date=datetime(2024, 11, 16),
-                has_attachments=False,
-            ),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="rechnung@amazon.de",
+                    subject="Bestellung",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=True,
+                ),
+                EmailSummary(
+                    uid=2,
+                    sender="newsletter@example.com",
+                    subject="News",
+                    date=datetime(2024, 11, 16),
+                    has_attachments=False,
+                ),
+            ]
+        )
 
         vm.set_filter("amazon")
 
@@ -284,22 +284,24 @@ class TestEmailViewModelFilter:
     def test_filter_by_subject(self):
         """Filter matches subject."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(
-                uid=1,
-                sender="test@example.com",
-                subject="Ihre Rechnung #12345",
-                date=datetime(2024, 11, 15),
-                has_attachments=True,
-            ),
-            EmailSummary(
-                uid=2,
-                sender="other@example.com",
-                subject="Newsletter",
-                date=datetime(2024, 11, 16),
-                has_attachments=False,
-            ),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="test@example.com",
+                    subject="Ihre Rechnung #12345",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=True,
+                ),
+                EmailSummary(
+                    uid=2,
+                    sender="other@example.com",
+                    subject="Newsletter",
+                    date=datetime(2024, 11, 16),
+                    has_attachments=False,
+                ),
+            ]
+        )
 
         vm.set_filter("rechnung")
 
@@ -309,22 +311,24 @@ class TestEmailViewModelFilter:
     def test_filter_empty_query_returns_all(self):
         """Empty filter query returns all emails."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(
-                uid=1,
-                sender="test@example.com",
-                subject="Test 1",
-                date=datetime(2024, 11, 15),
-                has_attachments=False,
-            ),
-            EmailSummary(
-                uid=2,
-                sender="other@example.com",
-                subject="Test 2",
-                date=datetime(2024, 11, 16),
-                has_attachments=False,
-            ),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="test@example.com",
+                    subject="Test 1",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=False,
+                ),
+                EmailSummary(
+                    uid=2,
+                    sender="other@example.com",
+                    subject="Test 2",
+                    date=datetime(2024, 11, 16),
+                    has_attachments=False,
+                ),
+            ]
+        )
 
         vm.set_filter("")
 
@@ -333,15 +337,17 @@ class TestEmailViewModelFilter:
     def test_filter_case_insensitive(self):
         """Filter is case insensitive."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(
-                uid=1,
-                sender="Rechnung@Amazon.DE",
-                subject="IHRE BESTELLUNG",
-                date=datetime(2024, 11, 15),
-                has_attachments=True,
-            ),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="Rechnung@Amazon.DE",
+                    subject="IHRE BESTELLUNG",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=True,
+                ),
+            ]
+        )
 
         vm.set_filter("amazon")
 
@@ -350,15 +356,17 @@ class TestEmailViewModelFilter:
     def test_filter_no_match_returns_empty(self):
         """Filter with no matches returns empty list."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(
-                uid=1,
-                sender="test@example.com",
-                subject="Test",
-                date=datetime(2024, 11, 15),
-                has_attachments=False,
-            ),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="test@example.com",
+                    subject="Test",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=False,
+                ),
+            ]
+        )
 
         vm.set_filter("xyz123notfound")
 
@@ -367,15 +375,17 @@ class TestEmailViewModelFilter:
     def test_filtered_emails_without_filter_returns_all(self):
         """filtered_emails property returns all when no filter set."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(
-                uid=1,
-                sender="test@example.com",
-                subject="Test",
-                date=datetime(2024, 11, 15),
-                has_attachments=False,
-            ),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="test@example.com",
+                    subject="Test",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=False,
+                ),
+            ]
+        )
 
         # No set_filter called
         assert len(vm.filtered_emails) == 1
@@ -490,14 +500,31 @@ class TestEmailViewModelNextEmail:
     def test_get_next_email_uid_returns_next(self):
         """get_next_email_uid returns UID of next email in list."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(uid=1, sender="a@test.com", subject="A",
-                        date=datetime(2024, 11, 17), has_attachments=False),
-            EmailSummary(uid=2, sender="b@test.com", subject="B",
-                        date=datetime(2024, 11, 16), has_attachments=False),
-            EmailSummary(uid=3, sender="c@test.com", subject="C",
-                        date=datetime(2024, 11, 15), has_attachments=False),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="a@test.com",
+                    subject="A",
+                    date=datetime(2024, 11, 17),
+                    has_attachments=False,
+                ),
+                EmailSummary(
+                    uid=2,
+                    sender="b@test.com",
+                    subject="B",
+                    date=datetime(2024, 11, 16),
+                    has_attachments=False,
+                ),
+                EmailSummary(
+                    uid=3,
+                    sender="c@test.com",
+                    subject="C",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=False,
+                ),
+            ]
+        )
 
         next_uid = vm.get_next_email_uid(0)
 
@@ -506,10 +533,17 @@ class TestEmailViewModelNextEmail:
     def test_get_next_email_uid_returns_none_at_end(self):
         """get_next_email_uid returns None at end of list."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(uid=1, sender="a@test.com", subject="A",
-                        date=datetime(2024, 11, 15), has_attachments=False),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="a@test.com",
+                    subject="A",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=False,
+                ),
+            ]
+        )
 
         next_uid = vm.get_next_email_uid(0)
 
@@ -518,10 +552,17 @@ class TestEmailViewModelNextEmail:
     def test_get_next_email_uid_returns_none_for_invalid_index(self):
         """get_next_email_uid returns None for invalid index."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(uid=1, sender="a@test.com", subject="A",
-                        date=datetime(2024, 11, 15), has_attachments=False),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="a@test.com",
+                    subject="A",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=False,
+                ),
+            ]
+        )
 
         next_uid = vm.get_next_email_uid(99)
 
@@ -530,14 +571,31 @@ class TestEmailViewModelNextEmail:
     def test_get_next_email_uid_respects_filter(self):
         """get_next_email_uid works with filtered list."""
         vm = EmailViewModel()
-        vm.set_emails([
-            EmailSummary(uid=1, sender="amazon@test.com", subject="Order",
-                        date=datetime(2024, 11, 17), has_attachments=False),
-            EmailSummary(uid=2, sender="other@test.com", subject="News",
-                        date=datetime(2024, 11, 16), has_attachments=False),
-            EmailSummary(uid=3, sender="amazon@test.com", subject="Shipping",
-                        date=datetime(2024, 11, 15), has_attachments=False),
-        ])
+        vm.set_emails(
+            [
+                EmailSummary(
+                    uid=1,
+                    sender="amazon@test.com",
+                    subject="Order",
+                    date=datetime(2024, 11, 17),
+                    has_attachments=False,
+                ),
+                EmailSummary(
+                    uid=2,
+                    sender="other@test.com",
+                    subject="News",
+                    date=datetime(2024, 11, 16),
+                    has_attachments=False,
+                ),
+                EmailSummary(
+                    uid=3,
+                    sender="amazon@test.com",
+                    subject="Shipping",
+                    date=datetime(2024, 11, 15),
+                    has_attachments=False,
+                ),
+            ]
+        )
         vm.set_filter("amazon")
 
         # Filtered list: [1, 3] (by date: 1 first, then 3)

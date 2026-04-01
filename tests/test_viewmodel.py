@@ -1,13 +1,11 @@
 """Tests for ScanViewModel."""
 
-import pytest
 from pathlib import Path
-from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import gi
-gi.require_version('Gtk', '4.0')
-from gi.repository import GLib
+
+gi.require_version("Gtk", "4.0")
 
 from belegscanner.viewmodel import ScanViewModel
 

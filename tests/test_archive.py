@@ -1,6 +1,5 @@
 """Tests for ArchiveService."""
 
-import pytest
 from datetime import datetime
 from pathlib import Path
 
@@ -136,9 +135,7 @@ class TestArchive:
         source = archive_dir / "temp.pdf"
         source.write_text("test content")
 
-        result = service.archive(
-            source, datetime(2024, 11, 15), "test", "ER", is_credit_card=False
-        )
+        result = service.archive(source, datetime(2024, 11, 15), "test", "ER", is_credit_card=False)
 
         assert isinstance(result, Path)
 
@@ -155,8 +152,7 @@ class TestArchiveWithAmount:
 
         date = datetime(2024, 11, 15)
         result = service.archive(
-            source, date, "rewe", "ER",
-            is_credit_card=False, currency="EUR", amount="27.07"
+            source, date, "rewe", "ER", is_credit_card=False, currency="EUR", amount="27.07"
         )
 
         assert result.name == "2024-11-15_EUR27-07_rewe.pdf"
@@ -170,8 +166,7 @@ class TestArchiveWithAmount:
 
         date = datetime(2024, 11, 15)
         result = service.archive(
-            source, date, "hotel", "ER",
-            is_credit_card=False, currency="USD", amount="150.00"
+            source, date, "hotel", "ER", is_credit_card=False, currency="USD", amount="150.00"
         )
 
         assert result.name == "2024-11-15_USD150-00_hotel.pdf"
@@ -185,8 +180,7 @@ class TestArchiveWithAmount:
 
         date = datetime(2024, 3, 5)
         result = service.archive(
-            source, date, "migros", "Kassa",
-            is_credit_card=False, currency="CHF", amount="89.50"
+            source, date, "migros", "Kassa", is_credit_card=False, currency="CHF", amount="89.50"
         )
 
         assert result.name == "2024-03-05_CHF89-50_migros.pdf"
@@ -200,8 +194,7 @@ class TestArchiveWithAmount:
 
         date = datetime(2024, 11, 15)
         result = service.archive(
-            source, date, "test", "ER",
-            is_credit_card=False, currency="EUR", amount="1234.56"
+            source, date, "test", "ER", is_credit_card=False, currency="EUR", amount="1234.56"
         )
 
         assert result.name == "2024-11-15_EUR1234-56_test.pdf"
@@ -215,8 +208,7 @@ class TestArchiveWithAmount:
 
         date = datetime(2024, 11, 15)
         result = service.archive(
-            source, date, "test", "ER",
-            is_credit_card=False, currency="EUR", amount="100.00"
+            source, date, "test", "ER", is_credit_card=False, currency="EUR", amount="100.00"
         )
 
         assert result.name == "2024-11-15_EUR100-00_test.pdf"
@@ -230,16 +222,14 @@ class TestArchiveWithAmount:
         source1 = archive_dir / "temp1.pdf"
         source1.write_text("first")
         service.archive(
-            source1, date, "rewe", "ER",
-            is_credit_card=False, currency="EUR", amount="27.07"
+            source1, date, "rewe", "ER", is_credit_card=False, currency="EUR", amount="27.07"
         )
 
         # Create second file with same details
         source2 = archive_dir / "temp2.pdf"
         source2.write_text("second")
         result = service.archive(
-            source2, date, "rewe", "ER",
-            is_credit_card=False, currency="EUR", amount="27.07"
+            source2, date, "rewe", "ER", is_credit_card=False, currency="EUR", amount="27.07"
         )
 
         assert result.name == "2024-11-15_EUR27-07_rewe_01.pdf"
@@ -253,8 +243,7 @@ class TestArchiveWithAmount:
 
         date = datetime(2024, 11, 15)
         result = service.archive(
-            source, date, "amazon", "ER-KKJK",
-            is_credit_card=True, currency="EUR", amount="99.99"
+            source, date, "amazon", "ER-KKJK", is_credit_card=True, currency="EUR", amount="99.99"
         )
 
         # Should be in December folder

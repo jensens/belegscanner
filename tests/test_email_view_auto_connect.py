@@ -1,6 +1,7 @@
 """Tests for EmailView auto-connect functionality."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
 import pytest
 
 
@@ -26,9 +27,7 @@ class TestEmailViewAutoConnect:
         credential.get_password.return_value = "secret123"
         return credential
 
-    def test_try_auto_connect_returns_true_when_config_complete(
-        self, mock_config, mock_credential
-    ):
+    def test_try_auto_connect_returns_true_when_config_complete(self, mock_config, mock_credential):
         """try_auto_connect returns True when config and password are available."""
         # We test the logic without actually creating the widget
         # Check config
@@ -40,9 +39,7 @@ class TestEmailViewAutoConnect:
         can_connect = mock_config.is_email_configured() and password is not None
         assert can_connect is True
 
-    def test_try_auto_connect_returns_false_when_config_incomplete(
-        self, mock_credential
-    ):
+    def test_try_auto_connect_returns_false_when_config_incomplete(self, mock_credential):
         """try_auto_connect returns False when config is incomplete."""
         config = MagicMock()
         config.is_email_configured.return_value = False
@@ -81,7 +78,9 @@ class TestEmailViewAutoConnect:
             password = credential.get_password(config.imap_user)
             result = config.is_email_configured() and password is not None
 
-            assert result == expected, f"Failed for is_configured={is_configured}, has_password={has_password}"
+            assert result == expected, (
+                f"Failed for is_configured={is_configured}, has_password={has_password}"
+            )
 
 
 class TestEmailViewAutoConnectIntegration:

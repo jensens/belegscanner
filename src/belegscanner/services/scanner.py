@@ -39,10 +39,14 @@ class ScannerService:
             subprocess.run(
                 [
                     "scanimage",
-                    "--mode", self.mode,
-                    "--resolution", str(self.resolution),
-                    "--format", "png",
-                    "-o", str(output_path),
+                    "--mode",
+                    self.mode,
+                    "--resolution",
+                    str(self.resolution),
+                    "--format",
+                    "png",
+                    "-o",
+                    str(output_path),
                 ],
                 check=True,
             )

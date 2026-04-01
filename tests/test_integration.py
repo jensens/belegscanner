@@ -17,17 +17,79 @@ from belegscanner.services.scanner import ScannerService
 def mock_image(tmp_path: Path) -> Path:
     """Create a minimal valid PNG image for testing."""
     # Minimal 1x1 white PNG (67 bytes)
-    png_data = bytes([
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
-        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,  # IHDR chunk
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,  # 1x1
-        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-        0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,  # IDAT chunk
-        0x54, 0x08, 0xD7, 0x63, 0xF8, 0xFF, 0xFF, 0x3F,
-        0x00, 0x05, 0xFE, 0x02, 0xFE, 0xDC, 0xCC, 0x59,
-        0xE7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,  # IEND chunk
-        0x44, 0xAE, 0x42, 0x60, 0x82,
-    ])
+    png_data = bytes(
+        [
+            0x89,
+            0x50,
+            0x4E,
+            0x47,
+            0x0D,
+            0x0A,
+            0x1A,
+            0x0A,  # PNG signature
+            0x00,
+            0x00,
+            0x00,
+            0x0D,
+            0x49,
+            0x48,
+            0x44,
+            0x52,  # IHDR chunk
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x00,
+            0x00,
+            0x00,
+            0x01,  # 1x1
+            0x08,
+            0x02,
+            0x00,
+            0x00,
+            0x00,
+            0x90,
+            0x77,
+            0x53,
+            0xDE,
+            0x00,
+            0x00,
+            0x00,
+            0x0C,
+            0x49,
+            0x44,
+            0x41,  # IDAT chunk
+            0x54,
+            0x08,
+            0xD7,
+            0x63,
+            0xF8,
+            0xFF,
+            0xFF,
+            0x3F,
+            0x00,
+            0x05,
+            0xFE,
+            0x02,
+            0xFE,
+            0xDC,
+            0xCC,
+            0x59,
+            0xE7,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x49,
+            0x45,
+            0x4E,  # IEND chunk
+            0x44,
+            0xAE,
+            0x42,
+            0x60,
+            0x82,
+        ]
+    )
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(png_data)
     return image_path
@@ -67,6 +129,7 @@ class TestFullWorkflowMockScanner:
         # Mock scanner to copy our test image
         def mock_scan(output_path):
             import shutil
+
             shutil.copy(mock_image, output_path)
             return True
 
@@ -123,6 +186,7 @@ class TestFullWorkflowMockScanner:
         # Mock scanner
         def mock_scan(output_path):
             import shutil
+
             shutil.copy(mock_image, output_path)
             return True
 
@@ -297,6 +361,7 @@ class TestServiceErrorHandling:
 
         with patch("subprocess.run") as mock_run:
             from subprocess import CalledProcessError
+
             mock_run.side_effect = CalledProcessError(1, "scanimage")
 
             result = scanner.scan_page(Path("/tmp/test.png"))
