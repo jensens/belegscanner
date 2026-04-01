@@ -1,6 +1,5 @@
 """PDF service for creating searchable PDFs with OCR."""
 
-import os
 import subprocess
 from pathlib import Path
 
@@ -38,7 +37,7 @@ class PdfService:
         try:
             # Create PDF from images using ImageMagick
             subprocess.run(
-                ["convert"] + [str(p) for p in pages] + [str(temp_pdf)],
+                ["convert", *[str(p) for p in pages], str(temp_pdf)],
                 check=True,
                 capture_output=True,
             )
@@ -59,14 +58,11 @@ class PdfService:
                 capture_output=True,
             )
 
-            # Clean up temp file
-            if os.path.exists(temp_pdf):
-                os.remove(temp_pdf)
-
             return True
 
         except subprocess.CalledProcessError:
-            # Clean up temp file on error
-            if os.path.exists(temp_pdf):
-                os.remove(temp_pdf)
             return False
+
+        finally:
+            # Clean up temp file
+            temp_pdf.unlink(missing_ok=True)
