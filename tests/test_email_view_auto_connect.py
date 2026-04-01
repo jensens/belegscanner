@@ -86,20 +86,25 @@ class TestEmailViewAutoConnect:
 class TestEmailViewAutoConnectIntegration:
     """Integration tests for auto-connect behavior."""
 
+    @pytest.mark.skip(reason="Requires GTK display")
     def test_auto_connect_shows_connecting_status(self):
-        """When auto-connecting, status should show 'Verbinde...'."""
-        # This is a behavioral requirement:
-        # When auto-connect starts, user should see "Verbinde..." status
-        pass  # UI test - verified manually
+        """When auto-connecting, status bar should show 'Verbinde...'."""
+        # Behavioral requirement: _connect() sets vm.status = "Verbinde..." before
+        # spawning the background thread, so the UI gives immediate feedback.
+        # Verified by inspecting email_view.py _connect() line: self.vm.status = "Verbinde..."
+        raise AssertionError("This test requires a live GTK display to run.")
 
+    @pytest.mark.skip(reason="Requires GTK display")
     def test_auto_connect_shows_error_on_failure(self):
-        """When auto-connect fails, error should be shown."""
-        # This is a behavioral requirement:
-        # Failed connection should show error message
-        pass  # UI test - verified manually
+        """When auto-connect fails, status bar should show 'Verbindung fehlgeschlagen'."""
+        # Behavioral requirement: _on_connect_failed() sets
+        # vm.status = "Verbindung fehlgeschlagen" and the status_bar label is updated
+        # via the notify::status signal handler _on_status_changed().
+        raise AssertionError("This test requires a live GTK display to run.")
 
+    @pytest.mark.skip(reason="Requires GTK display")
     def test_auto_connect_updates_button_on_success(self):
-        """When auto-connect succeeds, button should show 'Trennen'."""
-        # This is a behavioral requirement:
-        # Successful connection changes button to "Trennen"
-        pass  # UI test - verified manually
+        """When auto-connect succeeds, connect button should show 'Trennen'."""
+        # Behavioral requirement: _on_connect_success() calls
+        # connect_btn.set_label("Trennen") after a successful IMAP login.
+        raise AssertionError("This test requires a live GTK display to run.")
