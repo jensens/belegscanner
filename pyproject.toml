@@ -7,6 +7,15 @@ name = "belegscanner"
 version = "0.1.0"
 description = "Scan receipts and archive them with OCR - GUI and CLI"
 requires-python = ">=3.12"
+license = {text = "Proprietary"}
+authors = [{name = "Klein und Partner KG"}]
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "python-dateutil>=2.9.0",
     "PyGObject>=3.46.0",
@@ -25,6 +34,10 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.8.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/kup-org/belegscanner"
+Issues = "https://github.com/kup-org/belegscanner/issues"
 
 [project.gui-scripts]
 belegscanner = "belegscanner.app:main"
