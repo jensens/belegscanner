@@ -20,6 +20,7 @@ dependencies = [
     "python-dateutil>=2.9.0",
     "PyGObject>=3.46.0",
     "weasyprint>=60.0",
+    "imapclient>=3.0",
 ]
 
 # Build-Abhängigkeiten für PyGObject (einmalig):
