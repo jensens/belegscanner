@@ -20,7 +20,7 @@ gi.require_version("Adw", "1")
 gi.require_version("WebKit", "6.0")
 from gi.repository import Adw, GLib, Gtk, WebKit
 
-from belegscanner.constants import CATEGORIES, CURRENCIES
+from belegscanner.constants import CATEGORIES, CURRENCIES, DEFAULT_CURRENCY
 from belegscanner.email_viewmodel import EmailViewModel
 from belegscanner.log import get_logger
 from belegscanner.services import (
@@ -628,7 +628,7 @@ class EmailView(Gtk.Box):
                 self.currency_dropdown.set_selected(CURRENCIES.index(self.vm.suggested_currency))
         else:
             self.amount_row.set_text("")
-            self.currency_dropdown.set_selected(0)  # Default EUR
+            self.currency_dropdown.set_selected(CURRENCIES.index(DEFAULT_CURRENCY))
 
         self.process_btn.set_sensitive(True)
         self.archive_btn.set_sensitive(True)
@@ -798,7 +798,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         self.date_row.set_text("")
         self.amount_row.set_text("")
-        self.currency_dropdown.set_selected(0)  # Reset to EUR
+        self.currency_dropdown.set_selected(CURRENCIES.index(DEFAULT_CURRENCY))
         self.desc_row.set_text("")
         self.process_btn.set_sensitive(False)
         self.archive_btn.set_sensitive(False)
@@ -913,7 +913,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             return
 
         # Get currency
-        currency = CURRENCIES[currency_idx] if currency_idx < len(CURRENCIES) else "EUR"
+        currency = CURRENCIES[currency_idx] if currency_idx < len(CURRENCIES) else DEFAULT_CURRENCY
 
         if not desc:
             self._show_error("Fehler", "Bitte Beschreibung eingeben.")

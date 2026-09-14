@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from belegscanner.constants import CURRENCIES
 from belegscanner.services.ollama import ExtractionResult, OllamaService
 
 
@@ -277,3 +278,12 @@ class TestLoggingConvention:
         assert result.vendor is None
         assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
         assert any("Ollama" in r.message for r in caplog.records)
+
+
+class TestBuildPrompt:
+    def test_prompt_lists_all_ui_currencies(self):
+        service = OllamaService()
+        prompt = service.build_prompt("Rechnungstext")
+        for currency in CURRENCIES:
+            assert currency in prompt
+        assert "Rechnungstext" in prompt

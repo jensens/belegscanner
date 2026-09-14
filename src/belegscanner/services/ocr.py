@@ -5,7 +5,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from belegscanner.constants import OCR_LANGUAGE, OCR_THRESHOLDS
+from belegscanner.constants import KNOWN_CURRENCIES, OCR_LANGUAGE, OCR_THRESHOLDS
 from belegscanner.log import get_logger
 
 logger = get_logger(__name__)
@@ -67,34 +67,7 @@ class OcrService:
         return None
 
     # Known currency codes (only these are recognized, not arbitrary 3-letter codes)
-    KNOWN_CURRENCIES = frozenset(
-        [
-            "EUR",
-            "USD",
-            "CHF",
-            "GBP",
-            "JPY",
-            "CAD",
-            "AUD",
-            "NZD",
-            "SEK",
-            "NOK",
-            "DKK",
-            "PLN",
-            "CZK",
-            "HUF",
-            "RON",
-            "BGN",
-            "HRK",
-            "RUB",
-            "TRY",
-            "BRL",
-            "MXN",
-            "INR",
-            "CNY",
-            "KRW",
-        ]
-    )
+    KNOWN_CURRENCIES = KNOWN_CURRENCIES
 
     def extract_amount(self, text: str | None) -> tuple[str, str] | None:
         """Extract amount and currency from OCR text.

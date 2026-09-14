@@ -1,26 +1,14 @@
-"""Tests for belegscanner constants."""
+"""Tests for shared constants."""
 
-from belegscanner.constants import CURRENCIES
+from belegscanner.constants import CURRENCIES, DEFAULT_CURRENCY, KNOWN_CURRENCIES
 
 
-class TestCurrencies:
-    """Test CURRENCIES constant."""
-
-    def test_currencies_is_tuple(self):
-        """CURRENCIES is a tuple."""
-        assert isinstance(CURRENCIES, tuple)
-
-    def test_currencies_contains_expected_values(self):
-        """CURRENCIES contains EUR, USD, CHF, GBP."""
+class TestCurrencyConstants:
+    def test_ui_currencies(self):
         assert CURRENCIES == ("EUR", "USD", "CHF", "GBP")
 
-    def test_currencies_eur_is_first(self):
-        """EUR is the first (default) currency."""
-        assert CURRENCIES[0] == "EUR"
+    def test_default_is_a_ui_currency(self):
+        assert DEFAULT_CURRENCY in CURRENCIES
 
-    def test_currencies_supports_index_lookup(self):
-        """Each currency can be found by index."""
-        assert CURRENCIES.index("EUR") == 0
-        assert CURRENCIES.index("USD") == 1
-        assert CURRENCIES.index("CHF") == 2
-        assert CURRENCIES.index("GBP") == 3
+    def test_known_currencies_superset_of_ui(self):
+        assert frozenset(CURRENCIES) <= KNOWN_CURRENCIES

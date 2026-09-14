@@ -17,6 +17,33 @@ CATEGORIES = {
 # Supported currencies for amount display
 CURRENCIES = ("EUR", "USD", "CHF", "GBP")
 
+# Default currency for dropdowns and fallbacks
+DEFAULT_CURRENCY = "EUR"
+
+# Codes, die OCR/KI-Extraktion erkennen: UI-Waehrungen plus gaengige weitere
+KNOWN_CURRENCIES = frozenset(CURRENCIES) | {
+    "JPY",
+    "CAD",
+    "AUD",
+    "NZD",
+    "SEK",
+    "NOK",
+    "DKK",
+    "PLN",
+    "CZK",
+    "HUF",
+    "RON",
+    "BGN",
+    "HRK",
+    "RUB",
+    "TRY",
+    "BRL",
+    "MXN",
+    "INR",
+    "CNY",
+    "KRW",
+}
+
 # Scanner settings
 DEFAULT_RESOLUTION = 300
 DEFAULT_SCAN_MODE = "True Gray"

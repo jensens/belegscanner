@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
-from belegscanner.constants import OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_TIMEOUT
+from belegscanner.constants import CURRENCIES, OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_TIMEOUT
 from belegscanner.log import get_logger
 
 logger = get_logger(__name__)
@@ -42,7 +42,7 @@ class OllamaService:
 
 Antworte NUR mit JSON (keine Erklärung):
 {{"vendor": "Firmenname oder null", "amount": "XX.XX oder null", \
-"currency": "EUR/USD/CHF oder null", "date": "TT.MM.JJJJ oder null"}}"""
+"currency": "{currencies} oder null", "date": "TT.MM.JJJJ oder null"}}"""
 
     def __init__(
         self,
@@ -95,6 +95,10 @@ Antworte NUR mit JSON (keine Erklärung):
             logger.debug("Ollama-Extraktion fehlgeschlagen: %s", e)
             return ExtractionResult(vendor=None, amount=None, currency=None, date=None)
 
+    def build_prompt(self, ocr_text: str) -> str:
+        """Render the extraction prompt for the given OCR text."""
+        return self.PROMPT_TEMPLATE.format(ocr_text=ocr_text, currencies="/".join(CURRENCIES))
+
     def _call_ollama(self, ocr_text: str) -> str:
         """Send prompt to Ollama and get response.
 
@@ -105,7 +109,7 @@ Antworte NUR mit JSON (keine Erklärung):
             Raw response text from Ollama
         """
         url = f"{self.host}/api/generate"
-        prompt = self.PROMPT_TEMPLATE.format(ocr_text=ocr_text)
+        prompt = self.build_prompt(ocr_text)
 
         payload = {
             "model": self.model,

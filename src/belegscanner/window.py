@@ -11,7 +11,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk
 
-from belegscanner.constants import CATEGORIES, CURRENCIES
+from belegscanner.constants import CATEGORIES, CURRENCIES, DEFAULT_CURRENCY
 from belegscanner.email_view import EmailView
 from belegscanner.services import (
     ArchiveService,
@@ -527,7 +527,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
             return
 
         # Get currency
-        currency = CURRENCIES[currency_idx] if currency_idx < len(CURRENCIES) else "EUR"
+        currency = CURRENCIES[currency_idx] if currency_idx < len(CURRENCIES) else DEFAULT_CURRENCY
 
         # Validate description
         if not desc:
@@ -580,7 +580,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
         self.vm.clear()
         self.date_row.set_text("")
         self.amount_row.set_text("")
-        self.currency_dropdown.set_selected(0)  # Reset to EUR
+        self.currency_dropdown.set_selected(CURRENCIES.index(DEFAULT_CURRENCY))
         self.desc_row.set_text("")
         self.date_hint.set_label("")
         self.amount_hint.set_label("")
