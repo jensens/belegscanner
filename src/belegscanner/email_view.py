@@ -33,7 +33,7 @@ from belegscanner.services import (
     OllamaService,
 )
 from belegscanner.services.imap import EmailMessage
-from belegscanner.services.text import strip_html
+from belegscanner.services.text import sanitize_filename, strip_html
 
 logger = get_logger(__name__)
 
@@ -766,9 +766,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         att = email.attachments[idx]
 
         # Save to temp file — sanitize filename to prevent path traversal
-        _raw = att.filename.replace("\\", "/")
-        _name = Path(_raw).name
-        safe_filename = _name if (_name and set(_name) != {"."}) else "attachment"
+        safe_filename = sanitize_filename(att.filename)
         temp_path = Path(self._temp_dir.name) / safe_filename
         temp_path.write_bytes(att.data)
 
