@@ -1,5 +1,6 @@
 """Email view widget for processing IMAP invoices."""
 
+import json
 import subprocess
 import tempfile
 import threading
@@ -46,6 +47,10 @@ class EmailView(Gtk.Box):
     |   ...             | [Verarbeiten]         |
     +------------------------------------------+
     """
+
+    _BLOCK_REMOTE_FILTER = json.dumps(
+        [{"trigger": {"url-filter": "https?://.*"}, "action": {"type": "block"}}]
+    )
 
     def __init__(
         self,
@@ -221,6 +226,7 @@ class EmailView(Gtk.Box):
         settings = self.webview.get_settings()
         settings.set_enable_javascript(False)
         settings.set_allow_modal_dialogs(False)
+        self._install_remote_blocker()
         preview_scrolled.set_child(self.webview)
         preview_group.add(preview_scrolled)
 
@@ -294,6 +300,30 @@ class EmailView(Gtk.Box):
 
         paned.set_end_child(details_box)
         paned.set_resize_end_child(False)
+
+    def _install_remote_blocker(self):
+        """Remote-Loads (Tracking-Pixel) in der Vorschau unterbinden."""
+        try:
+            store_dir = Path(GLib.get_user_cache_dir()) / "belegscanner" / "webkit-filters"
+            store_dir.mkdir(parents=True, exist_ok=True)
+            store = WebKit.UserContentFilterStore.new(str(store_dir))
+            store.save(
+                "block-remote",
+                GLib.Bytes.new(self._BLOCK_REMOTE_FILTER.encode()),
+                None,
+                self._on_remote_filter_ready,
+            )
+        except Exception:
+            logger.warning("Content-Filter nicht verfuegbar - Remote-Bilder deaktiviert")
+            self.webview.get_settings().set_auto_load_images(False)
+
+    def _on_remote_filter_ready(self, store, result):
+        try:
+            content_filter = store.save_finish(result)
+            self.webview.get_user_content_manager().add_filter(content_filter)
+        except Exception:
+            logger.warning("Content-Filter fehlgeschlagen - Remote-Bilder deaktiviert")
+            self.webview.get_settings().set_auto_load_images(False)
 
     def _on_realize(self, widget):
         """Handle widget realize - try auto-connect."""
