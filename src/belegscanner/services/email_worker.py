@@ -50,6 +50,12 @@ class EmailWorker:
         self._low: deque[Command] = deque()
         self._waiters: dict[int, list[Command]] = {}
         self._active: Command | None = None
+        # Wird in _deliver() gesetzt, sobald dessen Waiter bereits ausgeliefert
+        # wurden, aber bevor _run() _active auf None zuruecksetzt. Verhindert,
+        # dass ein Duplikat-Fetch in genau diesem Fenster als Waiter an ein
+        # bereits abgeschlossenes _active-Kommando gehaengt wird und dort nie
+        # wieder abgeholt wird (siehe _find_pending_fetch).
+        self._active_closed = False
         self._cv = threading.Condition()
         self._stopped = False
         self._thread = threading.Thread(target=self._run, name="email-worker", daemon=True)
@@ -89,7 +95,12 @@ class EmailWorker:
             )
 
     def _find_pending_fetch(self, uid: int) -> Command | None:
-        if self._active is not None and self._active.kind == "fetch" and self._active.uid == uid:
+        if (
+            self._active is not None
+            and not self._active_closed
+            and self._active.kind == "fetch"
+            and self._active.uid == uid
+        ):
             return self._active
         for cmd in [*self._high, *self._low]:
             if cmd.kind == "fetch" and cmd.uid == uid:
@@ -105,9 +116,10 @@ class EmailWorker:
                     break
                 command = self._high.popleft() if self._high else self._low.popleft()
                 self._active = command
+                self._active_closed = False
             if not busy and self._on_busy_changed:
                 busy = True
-                self._dispatch(self._on_busy_changed, True)
+                self._safe_dispatch(self._on_busy_changed, True)
             try:
                 result = command.fn()
             except Exception as e:
@@ -121,17 +133,31 @@ class EmailWorker:
                 self._cv.notify_all()
             if idle and busy and self._on_busy_changed:
                 busy = False
-                self._dispatch(self._on_busy_changed, False)
+                self._safe_dispatch(self._on_busy_changed, False)
         if busy and self._on_busy_changed:
-            self._dispatch(self._on_busy_changed, False)
+            self._safe_dispatch(self._on_busy_changed, False)
 
     def _deliver(
         self, command: Command, result: Any = None, error: Exception | None = None
     ) -> None:
         with self._cv:
-            extra = self._waiters.pop(command.uid, []) if command.uid is not None else []
+            if command.kind == "fetch" and command.uid is not None:
+                extra = self._waiters.pop(command.uid, [])
+            else:
+                extra = []
+            # Ab hier gilt das aktive Kommando als "geschlossen": seine Waiter
+            # wurden bereits ausgeliefert (bzw. es hatte keine), also darf sich ab
+            # jetzt kein neues Duplikat mehr an _active anhaengen (Critical-1-Fix).
+            self._active_closed = True
         for cmd in (command, *extra):
             if error is not None:
-                self._dispatch(cmd.on_error, error)
+                self._safe_dispatch(cmd.on_error, error)
             else:
-                self._dispatch(cmd.on_done, result)
+                self._safe_dispatch(cmd.on_done, result)
+
+    def _safe_dispatch(self, fn: Callable[..., Any], *args: Any) -> None:
+        """Dispatch aufrufen; eine Exception im Callback darf den Worker nicht toeten."""
+        try:
+            self._dispatch(fn, *args)
+        except Exception:
+            logger.exception("Dispatch-Callback fehlgeschlagen")
