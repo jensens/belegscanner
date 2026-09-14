@@ -408,26 +408,17 @@ class ImapService:
         """
         if not self._connection:
             return False
-
         try:
-            # Select source folder
-            status, _ = self._connection.select(source_folder)
-            if status != "OK":
-                return False
-
-            # Copy to target folder
-            status, _ = self._connection.uid("COPY", str(uid), target_folder)
-            if status != "OK":
-                return False
-
-            # Mark as deleted in source
-            status, _ = self._connection.uid("STORE", str(uid), "+FLAGS", "\\Deleted")
-            if status != "OK":
-                return False
-
-            # Expunge to actually delete
-            self._connection.expunge()
-
+            self._connection.select_folder(source_folder)
+            if self._connection.has_capability("MOVE"):
+                self._connection.move([uid], target_folder)
+            else:
+                self._connection.copy([uid], target_folder)
+                self._connection.delete_messages([uid])
+                if self._connection.has_capability("UIDPLUS"):
+                    self._connection.expunge([uid])  # UID EXPUNGE: nur diese Mail
+                else:
+                    self._connection.expunge()
             return True
         except Exception:
             logger.warning("E-Mail-Verschiebung fehlgeschlagen fuer UID %d", uid)

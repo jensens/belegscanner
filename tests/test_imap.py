@@ -3,7 +3,6 @@
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
 from imapclient.response_types import Address, Envelope
 
 from belegscanner.services.imap import (
@@ -356,53 +355,42 @@ class TestImapServiceFetchEmail:
         assert message.attachments[0].filename == "passwd.pdf"
 
 
-@pytest.mark.skip(reason="Portierung auf IMAPClient in Folge-Tasks")
 class TestImapServiceMoveEmail:
-    """Test email moving."""
-
-    def test_move_email_copies_and_deletes(self):
-        """move_email() copies to target and deletes from source."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.uid.return_value = ("OK", [])
-            mock_imap.return_value = mock_conn
-
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            result = service.move_email(101, "Rechnungseingang", "Rechnungseingang/archiviert")
-
-            assert result is True
-            # Verify COPY was called
-            copy_calls = [c for c in mock_conn.uid.call_args_list if c[0][0] == "COPY"]
-            assert len(copy_calls) == 1
-            # Verify STORE (delete flag) was called
-            store_calls = [c for c in mock_conn.uid.call_args_list if c[0][0] == "STORE"]
-            assert len(store_calls) == 1
-
-    def test_move_email_returns_false_on_failure(self):
-        """move_email() returns False when operation fails."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.uid.side_effect = Exception("COPY failed")
-            mock_imap.return_value = mock_conn
-
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            result = service.move_email(101, "Rechnungseingang", "Rechnungseingang/archiviert")
-
-            assert result is False
-
-    def test_move_email_returns_false_when_not_connected(self):
-        """move_email() returns False when not connected."""
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_move_uses_move_capability(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.has_capability.side_effect = lambda cap: cap == "MOVE"
+        mock_client_cls.return_value = mock_client
         service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        assert service.move_email(5, "INBOX", "Archiv") is True
+        mock_client.move.assert_called_once_with([5], "Archiv")
+        mock_client.copy.assert_not_called()
 
-        result = service.move_email(101, "Rechnungseingang", "Rechnungseingang/archiviert")
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_move_falls_back_to_copy_delete_expunge(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.has_capability.side_effect = lambda cap: cap == "UIDPLUS"
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        assert service.move_email(5, "INBOX", "Archiv") is True
+        mock_client.copy.assert_called_once_with([5], "Archiv")
+        mock_client.delete_messages.assert_called_once_with([5])
+        mock_client.expunge.assert_called_once_with([5])
 
-        assert result is False
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_move_returns_false_on_failure(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.has_capability.return_value = True
+        mock_client.move.side_effect = Exception("kaputt")
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        assert service.move_email(5, "INBOX", "Archiv") is False
+
+    def test_move_returns_false_when_not_connected(self):
+        assert ImapService("x").move_email(5, "a", "b") is False
 
 
 class FakePart(tuple):
