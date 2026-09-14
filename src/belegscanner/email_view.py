@@ -820,34 +820,28 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             if next_uid and not self.vm.get_cached_email(next_uid):
                 self._start_prefetch(next_uid)
 
-        self.vm.increment_busy()
         self.vm.status = "Archiviere..."
 
-        archived_uid = email.uid  # Capture for closure
+        archived_uid = email.uid
+        imap = self.imap
+        inbox = self.config.imap_inbox
+        archive_folder = self.config.imap_archive
 
-        def archive_thread():
-            try:
-                # RC5: Capture IMAP reference to avoid race with disconnect
-                imap = self.imap
-                if imap is None:
-                    GLib.idle_add(self._on_process_failed, "Nicht verbunden.")
-                    return
+        def do_archive():
+            if imap is None:
+                raise RuntimeError("Nicht verbunden.")
+            if not imap.move_email(archived_uid, inbox, archive_folder):
+                raise RuntimeError("E-Mail konnte nicht verschoben werden.")
+            return archived_uid
 
-                # RC6: Use captured archived_uid, not email.uid
-                success = imap.move_email(
-                    archived_uid,
-                    self.config.imap_inbox,
-                    self.config.imap_archive,
-                )
-                if success:
-                    GLib.idle_add(self._on_archive_success, archived_uid)
-                else:
-                    GLib.idle_add(self._on_process_failed, "E-Mail konnte nicht verschoben werden.")
-            except Exception as e:
-                GLib.idle_add(self._on_process_failed, str(e))
-
-        thread = threading.Thread(target=archive_thread, daemon=True)
-        thread.start()
+        self.worker.submit(
+            Command(
+                kind="move",
+                fn=do_archive,
+                on_done=self._on_archive_success,
+                on_error=self._on_process_failed,
+            )
+        )
 
     def _on_archive_success(self, archived_uid: int):
         """Handle successful archive-only operation."""
@@ -917,61 +911,51 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
                 self._start_prefetch(next_uid)
 
         # Process in background
-        self.vm.increment_busy()
         self.vm.status = "Verarbeite..."
 
-        def process_thread():
-            try:
-                # RC5+RC6: Capture IMAP reference and email UID at start
-                imap = self.imap
-                processed_uid = email.uid
+        imap = self.imap
+        processed_uid = email.uid
+        inbox = self.config.imap_inbox
+        archive_folder = self.config.imap_archive
 
-                # Get or create PDF
-                if attachment_idx >= 0 and attachment_idx < len(email.attachments):
-                    # Use attachment
-                    att = email.attachments[attachment_idx]
-                    pdf_path = Path(self._temp_dir.name) / "attachment.pdf"
-                    pdf_path.write_bytes(att.data)
-                else:
-                    # Create PDF from email
-                    pdf_path = Path(self._temp_dir.name) / "email.pdf"
-                    success = self.email_pdf.create_pdf(
-                        sender=email.sender,
-                        subject=email.subject,
-                        date=email.date,
-                        message_id=email.message_id,
-                        body_text=email.body_text,
-                        body_html=email.body_html,
-                        output_path=pdf_path,
-                    )
-                    if not success:
-                        GLib.idle_add(self._on_process_failed, "PDF konnte nicht erstellt werden.")
-                        return
+        def do_process():
+            if attachment_idx >= 0 and attachment_idx < len(email.attachments):
+                att = email.attachments[attachment_idx]
+                pdf_path = Path(self._temp_dir.name) / "attachment.pdf"
+                pdf_path.write_bytes(att.data)
+            else:
+                pdf_path = Path(self._temp_dir.name) / "email.pdf"
+                if not self.email_pdf.create_pdf(
+                    sender=email.sender,
+                    subject=email.subject,
+                    date=email.date,
+                    message_id=email.message_id,
+                    body_text=email.body_text,
+                    body_html=email.body_html,
+                    output_path=pdf_path,
+                ):
+                    raise RuntimeError("PDF konnte nicht erstellt werden.")
 
-                # Archive with amount
-                self.archive.base_path = self.config.archive_path
-                final_path = self.archive.archive(
-                    pdf_path, date, desc, category, is_cc, currency=currency, amount=amount
-                )
+            self.archive.base_path = self.config.archive_path
+            final_path = self.archive.archive(
+                pdf_path, date, desc, category, is_cc, currency=currency, amount=amount
+            )
 
-                # Move email to archive folder
-                if imap is None:
-                    GLib.idle_add(self._on_process_failed, "Nicht verbunden.")
-                    return
+            if imap is None:
+                raise RuntimeError("Nicht verbunden.")
+            imap.move_email(processed_uid, inbox, archive_folder)
+            return final_path
 
-                imap.move_email(
-                    processed_uid,
-                    self.config.imap_inbox,
-                    self.config.imap_archive,
-                )
-
-                GLib.idle_add(self._on_process_success, final_path, is_cc, processed_uid)
-
-            except Exception as e:
-                GLib.idle_add(self._on_process_failed, str(e))
-
-        thread = threading.Thread(target=process_thread, daemon=True)
-        thread.start()
+        self.worker.submit(
+            Command(
+                kind="process",
+                fn=do_process,
+                on_done=lambda final_path: self._on_process_success(
+                    final_path, is_cc, processed_uid
+                ),
+                on_error=self._on_process_failed,
+            )
+        )
 
     def _on_process_success(self, final_path: Path, is_cc: bool, processed_uid: int):
         """Handle successful processing."""
@@ -988,11 +972,10 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             msg = f"Gespeichert (Folgemonat): {final_path.name} ✓"
         self._show_toast(msg, timeout=3)
 
-    def _on_process_failed(self, error: str):
+    def _on_process_failed(self, error: Exception):
         """Handle processing failure."""
-        self.vm.decrement_busy()
         self.vm.status = "Verarbeitung fehlgeschlagen"
-        self._show_error("Fehler", error)
+        self._show_error("Fehler", str(error))
 
     def _show_toast(self, message: str, timeout: int = 2):
         """Show a brief toast notification.
@@ -1069,6 +1052,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
             result = self.ollama.extract(text_for_extraction)
             GLib.idle_add(self._on_ki_extraction_complete, result)
 
+        # Bewusst eigener Thread statt EmailWorker: Ollama-HTTP hat mit der
+        # seriellen IMAP-Queue nichts zu tun und darf parallel laufen.
         thread = threading.Thread(target=ki_thread, daemon=True)
         thread.start()
 
