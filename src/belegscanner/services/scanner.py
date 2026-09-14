@@ -3,7 +3,7 @@
 import subprocess
 from pathlib import Path
 
-from belegscanner.constants import DEFAULT_RESOLUTION, DEFAULT_SCAN_MODE, VALID_SCAN_MODES
+from belegscanner.constants import DEFAULT_RESOLUTION, DEFAULT_SCAN_MODE
 
 
 class ScannerService:
@@ -23,12 +23,22 @@ class ScannerService:
             resolution: Scan resolution in DPI (default: 300)
             mode: Scan mode, e.g., "True Gray", "Color" (default: "True Gray")
         """
-        if mode not in VALID_SCAN_MODES:
-            raise ValueError(
-                f"Ungueltiger Scan-Modus: '{mode}'. Erlaubt: {', '.join(sorted(VALID_SCAN_MODES))}"
-            )
         self.resolution = resolution
-        self.mode = mode
+        self.mode = mode  # laeuft durch den validierenden Setter
+
+    @property
+    def mode(self) -> str:
+        """Scan mode passed to scanimage (device-specific, e.g. 'True Gray')."""
+        return self._mode
+
+    @mode.setter
+    def mode(self, value: str) -> None:
+        if not value or not value.isprintable() or value.startswith("-"):
+            raise ValueError(
+                f"Ungueltiger Scan-Modus: {value!r}. "
+                "Erwartet: druckbarer Geraete-Modus ohne fuehrendes '-'."
+            )
+        self._mode = value
 
     def scan_page(self, output_path: Path | str) -> bool:
         """Scan a single page to PNG.

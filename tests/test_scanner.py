@@ -122,12 +122,19 @@ class TestScannerAvailable:
         assert result is False
 
 
-class TestScannerValidation:
-    def test_rejects_invalid_mode(self):
-        with pytest.raises(ValueError, match="Ungueltiger Scan-Modus"):
-            ScannerService(mode="'; rm -rf /")
+class TestScannerModeValidation:
+    @pytest.mark.parametrize(
+        "mode", ["True Gray", "Color", "24bit Color", "Gray[Error Diffusion]", "Black & White"]
+    )
+    def test_accepts_real_sane_modes(self, mode):
+        assert ScannerService(mode=mode).mode == mode
 
-    def test_accepts_valid_modes(self):
-        for mode in ["True Gray", "Color", "Lineart", "Gray"]:
-            service = ScannerService(mode=mode)
-            assert service.mode == mode
+    @pytest.mark.parametrize("mode", ["", "-foo", "--resolution", "a\x00b", "x\ny"])
+    def test_rejects_malformed_modes(self, mode):
+        with pytest.raises(ValueError, match="Ungueltiger Scan-Modus"):
+            ScannerService(mode=mode)
+
+    def test_setter_validates_too(self):
+        service = ScannerService()
+        with pytest.raises(ValueError):
+            service.mode = "-trick"
