@@ -2,8 +2,11 @@
 
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
-from belegscanner.services.email_pdf import EmailPdfService
+import pytest
+
+from belegscanner.services.email_pdf import EmailPdfService, _restricted_url_fetcher
 
 
 class TestEmailPdfServiceCreatePdf:
@@ -209,3 +212,40 @@ class TestEmailPdfServiceHtmlGeneration:
         assert "<pre" in html
         # Text should be escaped and preserved
         assert "Line 1" in html
+
+
+class TestRestrictedUrlFetcher:
+    def test_blocks_file_scheme(self):
+        with pytest.raises(ValueError, match="Blockiertes URL-Schema"):
+            _restricted_url_fetcher("file:///etc/passwd")
+
+    def test_blocks_unknown_scheme(self):
+        with pytest.raises(ValueError):
+            _restricted_url_fetcher("ftp://example.com/x")
+
+    def test_allows_http_with_timeout(self):
+        with patch("belegscanner.services.email_pdf.default_url_fetcher") as mock_fetch:
+            _restricted_url_fetcher("https://example.com/logo.png")
+            mock_fetch.assert_called_once_with("https://example.com/logo.png", timeout=5)
+
+    def test_allows_inline_data_image(self):
+        with patch("belegscanner.services.email_pdf.default_url_fetcher") as mock_fetch:
+            _restricted_url_fetcher("data:image/png;base64,AAAA")
+            mock_fetch.assert_called_once()
+
+
+class TestCreatePdfBlocksLocalFiles:
+    def test_pdf_with_file_url_image_still_succeeds(self, tmp_path):
+        service = EmailPdfService()
+        output = tmp_path / "mail.pdf"
+        ok = service.create_pdf(
+            sender="a@b.de",
+            subject="Test",
+            date=datetime(2024, 11, 15, 10, 0),
+            message_id="<x@y>",
+            body_text="",
+            body_html='<p>Hallo</p><img src="file:///etc/hostname">',
+            output_path=output,
+        )
+        assert ok is True  # kaputtes/blockiertes Bild bricht das PDF nicht
+        assert output.exists()

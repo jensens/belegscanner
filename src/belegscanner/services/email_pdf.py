@@ -4,11 +4,26 @@ import html
 from datetime import datetime
 from pathlib import Path
 
-from weasyprint import HTML
+from weasyprint import HTML, default_url_fetcher
 
 from belegscanner.log import get_logger
 
 logger = get_logger(__name__)
+
+FETCH_TIMEOUT = 5  # Sekunden pro Remote-Ressource
+
+
+def _restricted_url_fetcher(url: str, timeout: int = FETCH_TIMEOUT, **kwargs):
+    """Nur http(s) (mit Timeout) und Inline-data:image zulassen.
+
+    WeasyPrint behandelt eine hier geworfene Exception als fehlende
+    Ressource und rendert das PDF ohne sie weiter.
+    """
+    if url.startswith("data:image/"):
+        return default_url_fetcher(url)
+    if url.startswith(("http://", "https://")):
+        return default_url_fetcher(url, timeout=timeout)
+    raise ValueError(f"Blockiertes URL-Schema: {url}")
 
 
 class EmailPdfService:
@@ -57,7 +72,7 @@ class EmailPdfService:
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Render to PDF
-            HTML(string=html_content).write_pdf(output_path)
+            HTML(string=html_content, url_fetcher=_restricted_url_fetcher).write_pdf(output_path)
 
             return True
         except Exception:
