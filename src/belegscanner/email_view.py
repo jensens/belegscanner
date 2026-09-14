@@ -541,9 +541,8 @@ class EmailView(Gtk.Box):
             return
 
         uid = row.email_uid
-        self.vm.select_email(uid)
+        generation = self.vm.select_email(uid)
 
-        # Check cache first
         cached_email = self.vm.get_cached_email(uid)
         if cached_email:
             logger.debug("Cache-Treffer fuer UID %d", uid)
@@ -552,50 +551,43 @@ class EmailView(Gtk.Box):
             self.vm.status = "Bereit"
             return
 
-        # RC7: Check if prefetch is already running for this email
-        if self.vm.is_prefetch_pending_for(uid):
-            # Prefetch already running, don't start duplicate fetch
-            self.vm.status = "Lade E-Mail..."
+        if not (self.imap and self.vm.is_connected):
             return
 
-        # Cache miss - fetch from server
-        if self.imap and self.vm.is_connected:
-            self.vm.increment_busy()
-            self.vm.status = "Lade E-Mail..."
-            # Start fetch request tracking to prevent race conditions
-            request_id = self.vm.start_fetch_request(uid)
+        self.vm.status = "Lade E-Mail..."
+        imap = self.imap
+        inbox = self.config.imap_inbox
+        self.worker.submit(
+            Command(
+                kind="fetch",
+                uid=uid,
+                generation=generation,
+                fn=lambda: imap.fetch_email(uid, inbox),
+                on_done=lambda email, g=generation: self._on_email_fetched(email, g),
+                on_error=lambda error, g=generation: self._on_fetch_failed(error, g),
+            )
+        )
 
-            def fetch_thread():
-                # RC5: Capture IMAP reference to avoid race with disconnect
-                imap = self.imap
-                if imap is None:
-                    GLib.idle_add(self._on_email_fetched, None, request_id)
-                    return
-                email = imap.fetch_email(uid, self.config.imap_inbox)
-                GLib.idle_add(self._on_email_fetched, email, request_id)
+    def _on_email_fetched(self, email, generation: int):
+        """Handle email fetch completion (verwirft veraltete Ergebnisse)."""
+        if not self.vm.is_current(generation):
+            logger.debug("Veraltetes Fetch-Ergebnis verworfen (Generation %d)", generation)
+            return
+        if email is None:
+            self._on_fetch_failed(RuntimeError("E-Mail nicht gefunden"), generation)
+            return
+        self.vm.cache_email(email)
+        self.vm.set_current_email(email)
+        self._update_details()
+        self.vm.status = "Bereit"
 
-            thread = threading.Thread(target=fetch_thread, daemon=True)
-            thread.start()
-
-    def _on_email_fetched(self, email, request_id: int):
-        """Handle email fetch completion.
-
-        Args:
-            email: The fetched EmailMessage or None on error.
-            request_id: The request ID from start_fetch_request.
-        """
-        self.vm.decrement_busy()
-
-        if email:
-            # Complete the fetch request - rejected if user selected another email
-            if not self.vm.complete_fetch_request(request_id, email):
-                logger.debug("Veraltetes Fetch-Ergebnis verworfen (Request %d)", request_id)
-                return  # Stale request, ignore
-            self._update_details()
-            self.vm.status = "Bereit"
-        else:
-            self._clear_details()
-            self.vm.status = "E-Mail konnte nicht geladen werden"
+    def _on_fetch_failed(self, error: Exception, generation: int):
+        """Fetch-Fehler: Panel leeren, Status setzen — nie stumm haengen bleiben."""
+        if not self.vm.is_current(generation):
+            return
+        logger.warning("E-Mail-Fetch fehlgeschlagen: %s", error)
+        self._clear_details()
+        self.vm.status = "E-Mail konnte nicht geladen werden"
 
     def _update_details(self):
         """Update details panel with current email."""
@@ -656,12 +648,6 @@ class EmailView(Gtk.Box):
         if not email:
             self.webview.load_html("<html><body></body></html>", None)
             return
-
-        # RC8: Guard - verify this is still the current email before loading
-        # This prevents loading stale content if selection changed during processing
-        current = self.vm.current_email
-        if current is None or current.uid != email.uid:
-            return  # Selection changed, don't load stale content
 
         # Prefer HTML, fallback to plain text
         if email.body_html:
@@ -1029,65 +1015,26 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         dialog.present()
 
     def _start_prefetch(self, uid: int):
-        """Start prefetching an email in the background.
-
-        Uses the dedicated prefetch connection to fetch the email
-        while other operations continue on the main connection.
-
-        Args:
-            uid: UID of email to prefetch.
-        """
-        # Don't start if already prefetching
-        if self._prefetch_thread and self._prefetch_thread.is_alive():
+        """Naechste E-Mail als Low-Priority-Kommando vorladen (nur in den Cache)."""
+        if not self.imap or self.vm.get_cached_email(uid):
             return
-
-        if not self.imap:
-            return
-
-        # RC7: Track prefetch in ViewModel (replaces local _prefetch_pending_uid)
-        self.vm.start_prefetch(uid)
         logger.debug("Prefetch gestartet fuer UID %d", uid)
+        imap = self.imap
+        inbox = self.config.imap_inbox
+        self.worker.submit(
+            Command(
+                kind="fetch",
+                uid=uid,
+                fn=lambda: imap.fetch_email(uid, inbox),
+                on_done=self._on_prefetch_done,
+                on_error=lambda _error: None,  # Cache bleibt leer; Selektion holt regulaer
+            ),
+            low_priority=True,
+        )
 
-        def prefetch_thread():
-            email = self.imap.fetch_email_prefetch(uid, self.config.imap_inbox)
-            if email:
-                GLib.idle_add(self._on_prefetch_complete, email)
-            else:
-                # Prefetch failed - just clear pending state
-                GLib.idle_add(self._on_prefetch_failed, uid)
-
-        self._prefetch_thread = threading.Thread(target=prefetch_thread, daemon=True)
-        self._prefetch_thread.start()
-
-    def _on_prefetch_complete(self, email):
-        """Handle prefetch completion.
-
-        Stores the prefetched email in cache for quick access.
-        If this is the currently selected email, updates the UI.
-
-        Args:
-            email: Prefetched EmailMessage.
-        """
-        logger.debug("Prefetch abgeschlossen fuer UID %d", email.uid)
-        # RC7: Clear prefetch status in ViewModel
-        self.vm.complete_prefetch(email.uid)
-        self.vm.cache_email(email)
-
-        # RC7: If this is the currently selected email, update the UI
-        selected = self.vm.selected_email
-        if selected and selected.uid == email.uid:
-            self.vm.set_current_email(email)
-            self._update_details()
-            self.vm.status = "Bereit"
-
-    def _on_prefetch_failed(self, uid: int):
-        """Handle prefetch failure - just clear state.
-
-        Args:
-            uid: UID of the failed prefetch.
-        """
-        # RC7: Clear prefetch status in ViewModel
-        self.vm.complete_prefetch(uid)
+    def _on_prefetch_done(self, email):
+        if email is not None:
+            self.vm.cache_email(email)
 
     def _on_ki_extract_clicked(self, button):
         """Handle KI-Extraktion button click."""
