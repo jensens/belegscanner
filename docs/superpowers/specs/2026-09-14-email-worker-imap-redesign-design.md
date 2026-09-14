@@ -75,8 +75,10 @@ ohne Tracking-Vorschau und ohne `file://`-Zugriff verarbeitet.
 
 ### 3.3 EmailView entkoppeln
 
-- `email_view.py` behält UI-Aufbau und Handler, importiert aber kein
-  `threading` mehr; alle Handler delegieren an Worker + ViewModel.
+- `email_view.py` behält UI-Aufbau und Handler; alle IMAP-Arbeit delegiert
+  an Worker + ViewModel. Einzige verbleibende `threading`-Nutzung ist die
+  Ollama-KI-Extraktion (bewusst: HTTP-Aufruf, der parallel zur seriellen
+  IMAP-Queue laufen darf).
 - Zielgröße: deutlich unter 700 Zeilen.
 - Fehlerzustände setzen Status **und** räumen das Detail-Panel; ein Zustand
   „Panel zeigt Mail X, selektiert ist Mail Y" ist nicht mehr erreichbar
