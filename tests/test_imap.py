@@ -4,6 +4,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from imapclient.response_types import Address, Envelope
 
 from belegscanner.services.imap import (
     SOCKET_TIMEOUT,
@@ -139,72 +140,70 @@ class TestImapServiceListFolders:
         assert folders == []
 
 
-@pytest.mark.skip(reason="Portierung auf IMAPClient in Folge-Tasks")
+def make_envelope(subject=b"Rechnung", name=b"Amazon", mailbox=b"billing", host=b"amazon.de"):
+    """Build an imapclient Envelope for tests."""
+    return Envelope(
+        date=datetime(2024, 11, 15, 10, 0),
+        subject=subject,
+        from_=(Address(name, None, mailbox, host),),
+        sender=None,
+        reply_to=None,
+        to=None,
+        cc=None,
+        bcc=None,
+        in_reply_to=None,
+        message_id=b"<x@y>",
+    )
+
+
 class TestImapServiceListEmails:
     """Test email listing."""
 
-    def test_list_emails_returns_email_summaries(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_list_emails_returns_email_summaries(self, mock_client_cls):
         """list_emails() returns list of EmailSummary objects."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"5"])
-            mock_conn.search.return_value = ("OK", [b"1 2"])
-            # IMAP fetch returns list of tuples: [(b'header info', b'body'), b')']
-            mock_conn.fetch.return_value = (
-                "OK",
-                [
-                    (
-                        b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                        b'"Ihre Rechnung #12345" '
-                        b'((NIL NIL "rechnung" "amazon.de")) '
-                        b"NIL NIL NIL NIL NIL NIL NIL) "
-                        b'BODYSTRUCTURE ("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10))',
-                    ),
-                    b")",
-                    (
-                        b'2 (UID 102 ENVELOPE ("01-Nov-2024 09:00:00 +0100" '
-                        b'"Monatsrechnung November" '
-                        b'((NIL NIL "service" "telekom.de")) '
-                        b"NIL NIL NIL NIL NIL NIL NIL) "
-                        b'BODYSTRUCTURE ("MULTIPART" "MIXED"))',
-                    ),
-                    b")",
-                ],
-            )
-            mock_imap.return_value = mock_conn
+        mock_client = MagicMock()
+        mock_client.search.return_value = [7]
+        mock_client.fetch.return_value = {7: {b"ENVELOPE": make_envelope(), b"BODYSTRUCTURE": None}}
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        result = service.list_emails("INBOX")
+        assert len(result) == 1
+        assert result[0].uid == 7
+        assert result[0].subject == "Rechnung"
+        assert "billing@amazon.de" in result[0].sender
+        mock_client.select_folder.assert_called_with("INBOX")
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            emails = service.list_emails("Rechnungseingang")
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_subject_is_rfc2047_decoded(self, mock_client_cls):
+        """list_emails() decodes RFC-2047 encoded subjects."""
+        mock_client = MagicMock()
+        mock_client.search.return_value = [1]
+        mock_client.fetch.return_value = {
+            1: {
+                b"ENVELOPE": make_envelope(subject=b"=?utf-8?q?Rechnung_M=C3=A4rz?="),
+                b"BODYSTRUCTURE": None,
+            }
+        }
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        assert service.list_emails("INBOX")[0].subject == "Rechnung März"
 
-            assert len(emails) == 2
-            assert isinstance(emails[0], EmailSummary)
-            assert emails[0].uid == 101
-            assert "amazon" in emails[0].sender.lower()
-
-    def test_list_emails_returns_empty_when_folder_empty(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_list_emails_empty_folder(self, mock_client_cls):
         """list_emails() returns empty list for empty folder."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"0"])
-            mock_conn.search.return_value = ("OK", [b""])
-            mock_imap.return_value = mock_conn
-
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            emails = service.list_emails("Rechnungseingang")
-
-            assert emails == []
+        mock_client = MagicMock()
+        mock_client.search.return_value = []
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        assert service.list_emails("INBOX") == []
 
     def test_list_emails_returns_empty_when_not_connected(self):
         """list_emails() returns empty list when not connected."""
-        service = ImapService("imap.example.com")
-
-        emails = service.list_emails("Rechnungseingang")
-
-        assert emails == []
+        assert ImapService("imap.example.com").list_emails("INBOX") == []
 
 
 @pytest.mark.skip(reason="Portierung auf IMAPClient in Folge-Tasks")
@@ -397,111 +396,81 @@ class TestImapServiceMoveEmail:
         assert result is False
 
 
-@pytest.mark.skip(reason="Portierung auf IMAPClient in Folge-Tasks")
+class FakePart(tuple):
+    """Fake single-part BODYSTRUCTURE entry for attachment-detection tests."""
+
+    is_multipart = False
+
+
+class FakeMultipart(tuple):
+    """Fake multipart BODYSTRUCTURE entry for attachment-detection tests."""
+
+    is_multipart = True
+
+
 class TestHasAttachmentsDetection:
     """Test attachment detection in BODYSTRUCTURE parsing."""
 
-    @pytest.mark.parametrize(
-        "fetch_data, expected_has_attachments",
-        [
-            pytest.param(
-                (
-                    b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                    b'"Ihre Rechnung" '
-                    b'((NIL NIL "rechnung" "amazon.de")) '
-                    b"NIL NIL NIL NIL NIL NIL NIL) "
-                    b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                    b'("APPLICATION" "PDF" ("NAME" "Rechnung.pdf") NIL NIL "BASE64" 5000 NIL '
-                    b'("ATTACHMENT" ("FILENAME" "Rechnung.pdf")) NIL NIL) "MIXED"))'
-                ),
-                True,
-                id="pdf_attachment_disposition",
-            ),
-            pytest.param(
-                (
-                    b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                    b'"Newsletter" '
-                    b'((NIL NIL "news" "example.com")) '
-                    b"NIL NIL NIL NIL NIL NIL NIL) "
-                    b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL '
-                    b'"7BIT" 100 10 NIL NIL NIL NIL)'
-                    b'("TEXT" "HTML" NIL NIL NIL '
-                    b'"QUOTED-PRINTABLE" 500 20 NIL NIL NIL NIL) '
-                    b'"ALTERNATIVE"))'
-                ),
-                False,
-                id="multipart_alternative_no_attachment",
-            ),
-            pytest.param(
-                (
-                    b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                    b'"Kurze Nachricht" '
-                    b'((NIL NIL "sender" "example.com")) '
-                    b"NIL NIL NIL NIL NIL NIL NIL) "
-                    b'BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") '
-                    b'NIL NIL "7BIT" 50 5 NIL NIL NIL NIL))'
-                ),
-                False,
-                id="plain_text_email",
-            ),
-            pytest.param(
-                (
-                    b'1 (UID 101 ENVELOPE ("15-Nov-2024 10:30:00 +0100" '
-                    b'"Email mit Bild" '
-                    b'((NIL NIL "sender" "example.com")) '
-                    b"NIL NIL NIL NIL NIL NIL NIL) "
-                    b'BODYSTRUCTURE (("TEXT" "HTML" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                    b'("IMAGE" "PNG" ("NAME" "logo.png") NIL NIL "BASE64" 5000 NIL '
-                    b'("INLINE" ("FILENAME" "logo.png")) NIL NIL) "RELATED"))'
-                ),
-                False,
-                id="inline_image_no_attachment",
-            ),
-            pytest.param(
-                (
-                    b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
-                    b'"Ihre Rechnung" '
-                    b'((NIL NIL "support" "domaindiscount24.com")) '
-                    b"NIL NIL NIL NIL NIL NIL NIL) "
-                    b'BODYSTRUCTURE (("TEXT" "HTML" ("CHARSET" "utf-8") '
-                    b'NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                    b'("APPLICATION" "OCTET-STREAM" NIL NIL NIL "BASE64" 5000 NIL '
-                    b'(attachment ("FILENAME" "2025172897.pdf")) NIL NIL) "MIXED"))'
-                ),
-                True,
-                id="attachment_without_quotes",
-            ),
-            pytest.param(
-                (
-                    b'1 (UID 101 ENVELOPE ("23-Nov-2025 13:38:00 +0100" '
-                    b'"Ihre Rechnung" '
-                    b'((NIL NIL "support" "example.com")) '
-                    b"NIL NIL NIL NIL NIL NIL NIL) "
-                    b'BODYSTRUCTURE (("TEXT" "PLAIN" NIL NIL NIL "7BIT" 100 10 NIL NIL NIL NIL)'
-                    b'("APPLICATION" "PDF" ("NAME" "invoice.pdf") NIL NIL "BASE64" 5000 NIL '
-                    b'NIL NIL NIL) "MIXED"))'
-                ),
-                True,
-                id="filename_in_bodystructure",
-            ),
-        ],
-    )
-    def test_has_attachments(self, fetch_data, expected_has_attachments):
-        """has_attachments is detected correctly from BODYSTRUCTURE."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.search.return_value = ("OK", [b"1"])
-            mock_conn.fetch.return_value = ("OK", [(fetch_data,), b")"])
-            mock_imap.return_value = mock_conn
+    def _service(self):
+        return ImapService("imap.example.com")
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            emails = service.list_emails("INBOX")
+    def test_none_structure(self):
+        assert self._service()._structure_has_attachments(None) is False
 
-            assert len(emails) == 1
-            assert emails[0].has_attachments is expected_has_attachments
+    def test_plain_text_part(self):
+        part = FakePart((b"text", b"plain", (b"charset", b"utf-8"), None, None, b"7bit", 42))
+        assert self._service()._structure_has_attachments(part) is False
+
+    def test_attachment_disposition(self):
+        part = FakePart(
+            (
+                b"application",
+                b"pdf",
+                None,
+                None,
+                None,
+                b"base64",
+                1000,
+                None,
+                (b"attachment", (b"filename", b"invoice.pdf")),
+            )
+        )
+        assert self._service()._structure_has_attachments(part) is True
+
+    def test_pdf_by_param_name(self):
+        part = FakePart(
+            (
+                b"application",
+                b"octet-stream",
+                (b"name", b"rechnung.PDF"),
+                None,
+                None,
+                b"base64",
+                1000,
+            )
+        )
+        assert self._service()._structure_has_attachments(part) is True
+
+    def test_multipart_with_nested_attachment(self):
+        text = FakePart((b"text", b"plain", None, None, None, b"7bit", 10))
+        pdf = FakePart(
+            (
+                b"application",
+                b"pdf",
+                None,
+                None,
+                None,
+                b"base64",
+                99,
+                None,
+                (b"attachment", (b"filename", b"a.pdf")),
+            )
+        )
+        multi = FakeMultipart(([text, pdf], b"mixed"))
+        assert self._service()._structure_has_attachments(multi) is True
+
+    def test_broken_structure_returns_false(self):
+        assert self._service()._structure_has_attachments(FakePart(())) is False
 
 
 @pytest.mark.skip(reason="Portierung auf IMAPClient in Folge-Tasks")

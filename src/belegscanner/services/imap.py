@@ -1,7 +1,6 @@
 """IMAP email service for fetching invoices."""
 
 import email
-import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -300,112 +299,87 @@ class ImapService:
         """
         if not self._connection:
             return []
-
         try:
-            status, data = self._connection.select(folder)
-            if status != "OK":
+            self._connection.select_folder(folder)
+            uids = self._connection.search("ALL")
+            if not uids:
                 return []
-
-            # Search for all emails
-            status, data = self._connection.search(None, "ALL")
-            if status != "OK" or not data[0]:
-                return []
-
-            email_ids = data[0].split()
-            if not email_ids:
-                return []
-
-            # Fetch envelope and bodystructure for each email
             summaries = []
-            ids_str = b",".join(email_ids).decode()
-
-            status, data = self._connection.fetch(ids_str, "(UID ENVELOPE BODYSTRUCTURE)")
-            if status != "OK":
-                return []
-
-            for item in data:
-                # Handle both tuple format (some servers) and bytes format (Gmail)
-                if isinstance(item, tuple):
-                    raw_data = item[0]
-                elif isinstance(item, bytes) and b"ENVELOPE" in item:
-                    raw_data = item
-                else:
+            response = self._connection.fetch(uids, [b"ENVELOPE", b"BODYSTRUCTURE"])
+            for uid, data in response.items():
+                envelope = data.get(b"ENVELOPE")
+                if envelope is None:
                     continue
-
-                summary = self._parse_envelope(raw_data)
-                if summary:
-                    summaries.append(summary)
-
+                summaries.append(
+                    EmailSummary(
+                        uid=uid,
+                        sender=self._format_address(envelope.from_),
+                        subject=self._decode_mime_words(envelope.subject) or "(Kein Betreff)",
+                        date=envelope.date or datetime.now(),
+                        has_attachments=self._structure_has_attachments(data.get(b"BODYSTRUCTURE")),
+                    )
+                )
             return summaries
         except Exception:
-            logger.debug("E-Mail-Liste konnte nicht abgerufen werden")
+            logger.warning("E-Mail-Liste konnte nicht abgerufen werden", exc_info=True)
             return []
 
-    def _parse_envelope(self, data: bytes) -> EmailSummary | None:
-        """Parse ENVELOPE response into EmailSummary.
-
-        Args:
-            data: Raw ENVELOPE response bytes.
-
-        Returns:
-            EmailSummary or None if parsing fails.
-        """
+    @staticmethod
+    def _decode_mime_words(value: bytes | str | None) -> str:
+        """RFC-2047-dekodierter Header-Wert (z. B. '=?utf-8?q?...?=')."""
+        if not value:
+            return ""
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="replace")
         try:
-            data_str = data.decode("utf-8", errors="replace")
-
-            # Extract UID
-            uid_match = re.search(r"UID (\d+)", data_str)
-            uid = int(uid_match.group(1)) if uid_match else 0
-
-            # Extract date string
-            date_match = re.search(r'ENVELOPE \("([^"]*)"', data_str)
-            date_str = date_match.group(1) if date_match else ""
-
-            # Parse date
-            try:
-                date = parsedate_to_datetime(date_str)
-            except Exception:
-                logger.debug("Datum konnte nicht geparst werden: %s", date_str)
-                date = datetime.now()
-
-            # Extract subject (second quoted string after date)
-            subject_match = re.search(r'ENVELOPE \("[^"]*" "([^"]*)"', data_str)
-            subject = subject_match.group(1) if subject_match else "(Kein Betreff)"
-
-            # Extract sender (from the FROM field)
-            # Format: ((name route mailbox host))
-            from_match = re.search(
-                r'\(\((?:NIL|"[^"]*") (?:NIL|"[^"]*") "([^"]*)" "([^"]*)"\)\)',
-                data_str,
-            )
-            if from_match:
-                sender = f"{from_match.group(1)}@{from_match.group(2)}"
-            else:
-                sender = "(Unbekannt)"
-
-            # Check for attachments in BODYSTRUCTURE
-            # Look for multiple patterns since servers format disposition differently:
-            # - ("ATTACHMENT" ...) - quoted uppercase
-            # - (attachment ...) - unquoted lowercase
-            # - ("FILENAME" ...) or ("NAME" "xxx.pdf") with common attachment extensions
-            data_upper = data_str.upper()
-            has_attachments = (
-                '"ATTACHMENT"' in data_upper
-                or "(ATTACHMENT " in data_upper
-                or re.search(r'\("(?:FILE)?NAME"\s+"[^"]+\.(?:PDF|ZIP|DOC|XLS)', data_upper)
-                is not None
-            )
-
-            return EmailSummary(
-                uid=uid,
-                sender=sender,
-                subject=subject,
-                date=date,
-                has_attachments=has_attachments,
-            )
+            parts = decode_header(value)
         except Exception:
-            logger.debug("Envelope-Parsing fehlgeschlagen")
-            return None
+            logger.debug("Header-Dekodierung fehlgeschlagen: %s", value)
+            return value
+        return "".join(
+            part.decode(charset or "utf-8", errors="replace") if isinstance(part, bytes) else part
+            for part, charset in parts
+        )
+
+    def _format_address(self, addresses) -> str:
+        """Erste Adresse als 'Name <mailbox@host>' formatieren."""
+        if not addresses:
+            return "(Unbekannt)"
+        addr = addresses[0]
+        mailbox = (addr.mailbox or b"").decode("utf-8", errors="replace")
+        host = (addr.host or b"").decode("utf-8", errors="replace")
+        name = self._decode_mime_words(addr.name)
+        email_str = f"{mailbox}@{host}" if mailbox and host else ""
+        if name and email_str:
+            return f"{name} <{email_str}>"
+        return email_str or name or "(Unbekannt)"
+
+    _ATTACHMENT_EXTENSIONS = (b".pdf", b".zip", b".doc", b".docx", b".xls", b".xlsx")
+
+    def _structure_has_attachments(self, structure) -> bool:
+        """Heuristik auf der geparsten BODYSTRUCTURE (imapclient BodyData)."""
+        if structure is None:
+            return False
+        try:
+            return self._part_has_attachment(structure)
+        except (IndexError, TypeError, AttributeError):
+            logger.debug("BODYSTRUCTURE nicht auswertbar", exc_info=True)
+            return False
+
+    def _part_has_attachment(self, part) -> bool:
+        if getattr(part, "is_multipart", False):
+            return any(self._part_has_attachment(sub) for sub in part[0])
+        for item in part:
+            if not isinstance(item, tuple):
+                continue
+            flat = [x for x in item if isinstance(x, bytes)]
+            if flat and flat[0].lower() == b"attachment":
+                return True
+            for i, token in enumerate(flat):
+                if token.lower() in (b"name", b"filename") and i + 1 < len(flat):
+                    if flat[i + 1].lower().endswith(self._ATTACHMENT_EXTENSIONS):
+                        return True
+        return False
 
     def fetch_email(self, uid: int, folder: str) -> EmailMessage | None:
         """Fetch full email by UID.
