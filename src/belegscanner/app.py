@@ -11,7 +11,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio
 
 from belegscanner.log import setup_logging
-from belegscanner.window import BelegscannerWindow
+from belegscanner.webkit_env import ensure_webkit_sandbox_env
 
 
 class BelegscannerApp(Adw.Application):
@@ -29,6 +29,8 @@ class BelegscannerApp(Adw.Application):
 
     def do_activate(self):
         """Called when the application is activated."""
+        from belegscanner.window import BelegscannerWindow  # nach Sandbox-Probe importieren
+
         win = self.props.active_window
         if not win:
             win = BelegscannerWindow(application=self)
@@ -44,6 +46,7 @@ def main(level: int | None = None) -> int:
     if level is None:
         level = logging.DEBUG if os.environ.get("BELEGSCANNER_DEBUG") else logging.WARNING
     setup_logging(level)
+    ensure_webkit_sandbox_env()
 
     app = BelegscannerApp()
     return app.run(sys.argv)

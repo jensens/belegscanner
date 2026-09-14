@@ -1,17 +1,10 @@
 """Email view widget for processing IMAP invoices."""
 
-import os
 import subprocess
 import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
-
-# WebKit sandbox requires user namespace support which is unavailable on some
-# Linux configurations (Flatpak, restricted kernels). Without this, WebKit
-# crashes with "bwrap: Permission denied". Only set if not already configured.
-if "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS" not in os.environ:
-    os.environ["WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"] = "1"
 
 import gi
 
