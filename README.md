@@ -10,6 +10,7 @@ Scannt Belege, erkennt Datum und Lieferant per OCR und archiviert sie als durchs
 - Durchsuchbare **PDF-Erstellung** mit ocrmypdf
 - Strukturierte **Archivierung** nach Jahr/Monat/Kategorie
 - **Kreditkarten-Modus**: Ablage im Folgemonat
+- **IMAP-Verarbeitung** von Rechnungs-Mails (imapclient), Vorschau ohne Remote-Tracking
 
 ## Quickstart
 
@@ -43,6 +44,8 @@ uv run belegscanner
 3. Kategorie wählen (Kassa, ER, Kreditkarte)
 4. **Speichern** - PDF wird archiviert
 
+Debug-Ausgabe der GUI: `BELEGSCANNER_DEBUG=1 uv run belegscanner`
+
 ### CLI
 
 ```bash
@@ -57,6 +60,7 @@ uv run scan-beleg -k 2 -d 15.11.2024 -b "bauhaus" -s 3
 #   -d, --datum      Belegdatum (TT.MM.JJJJ)
 #   -b, --beschreibung  Lieferant/Beschreibung
 #   -s, --seiten     Anzahl Seiten (default: 1)
+#   -v, -vv          Ausfuehrliche Ausgabe (Info/Debug)
 ```
 
 ## Kategorien
