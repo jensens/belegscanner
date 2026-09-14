@@ -85,3 +85,128 @@ class TestWorkerSerialExecution:
         gate.set()
         assert worker.wait_idle()
         assert "nie" not in results
+
+
+class TestWorkerPriorities:
+    def test_high_priority_runs_before_low(self):
+        gate = threading.Event()
+        worker = EmailWorker(dispatch=sync_dispatch)
+        results: list[str] = []
+        worker.submit(make_command(lambda: gate.wait(5) and "gate", results))
+        worker.submit(make_command(lambda: "prefetch", results), low_priority=True)
+        worker.submit(make_command(lambda: "user", results))
+        gate.set()
+        assert worker.wait_idle()
+        assert results == ["gate", "user", "prefetch"]
+        worker.stop()
+
+
+class TestWorkerFetchDedup:
+    def test_second_fetch_for_same_uid_attaches_to_first(self):
+        gate = threading.Event()
+        calls: list[int] = []
+        worker = EmailWorker(dispatch=sync_dispatch)
+        results_a: list = []
+        results_b: list = []
+
+        def blocking_first():
+            gate.wait(5)
+            return "x"
+
+        worker.submit(make_command(blocking_first, results_a))  # blockiert den Worker
+
+        def fetch_fn():
+            calls.append(1)
+            return "mail-7"
+
+        worker.submit(
+            Command(
+                kind="fetch",
+                uid=7,
+                fn=fetch_fn,
+                on_done=results_a.append,
+                on_error=results_a.append,
+            ),
+            low_priority=True,
+        )
+        worker.submit(
+            Command(
+                kind="fetch",
+                uid=7,
+                fn=fetch_fn,
+                on_done=results_b.append,
+                on_error=results_b.append,
+            ),
+        )
+        gate.set()
+        assert worker.wait_idle()
+        assert calls == [1]  # nur EIN echter Fetch
+        assert "mail-7" in results_a
+        assert results_b == ["mail-7"]  # Warter bekommt dasselbe Ergebnis
+        worker.stop()
+
+    def test_user_interest_promotes_prefetch_priority(self):
+        gate = threading.Event()
+        worker = EmailWorker(dispatch=sync_dispatch)
+        order: list[str] = []
+        worker.submit(make_command(lambda: gate.wait(5) and order.append("gate"), []))
+        worker.submit(
+            Command(
+                kind="fetch",
+                uid=7,
+                fn=lambda: order.append("fetch7"),
+                on_done=lambda r: None,
+                on_error=lambda e: None,
+            ),
+            low_priority=True,
+        )
+        worker.submit(make_command(lambda: order.append("other-low"), []), low_priority=True)
+        # User waehlt UID 7 -> Prefetch wird hochgestuft
+        worker.submit(
+            Command(
+                kind="fetch",
+                uid=7,
+                fn=lambda: order.append("nie"),
+                on_done=lambda r: None,
+                on_error=lambda e: None,
+            ),
+        )
+        gate.set()
+        assert worker.wait_idle()
+        assert order.index("fetch7") < order.index("other-low")
+        assert "nie" not in order
+        worker.stop()
+
+    def test_fetch_error_reaches_all_waiters(self):
+        gate = threading.Event()
+        worker = EmailWorker(dispatch=sync_dispatch)
+        errors_a: list = []
+        errors_b: list = []
+
+        def failing_fetch():
+            raise ConnectionError("weg")
+
+        worker.submit(make_command(lambda: gate.wait(5), []))
+        worker.submit(
+            Command(
+                kind="fetch",
+                uid=9,
+                fn=failing_fetch,
+                on_done=lambda r: None,
+                on_error=errors_a.append,
+            ),
+            low_priority=True,
+        )
+        worker.submit(
+            Command(
+                kind="fetch",
+                uid=9,
+                fn=failing_fetch,
+                on_done=lambda r: None,
+                on_error=errors_b.append,
+            ),
+        )
+        gate.set()
+        assert worker.wait_idle()
+        assert len(errors_a) == 1 and len(errors_b) == 1
+        worker.stop()
