@@ -73,3 +73,18 @@ class TestCliVerbosity:
             mock_config.return_value.archive_path = None
             main()
             mock_setup.assert_called_once_with(expected_level)
+
+    @pytest.mark.parametrize(
+        "extra_args, expected_level",
+        [([], logging.WARNING), (["-v"], logging.INFO), (["-vv"], logging.DEBUG)],
+        ids=["default", "verbose", "debug"],
+    )
+    def test_gui_flag_passes_level_to_app_main(self, extra_args, expected_level):
+        with (
+            patch("sys.argv", ["scan-beleg", "-k", "1", "--gui", *extra_args]),
+            patch("belegscanner.cli.setup_logging"),
+            patch("belegscanner.app.main") as mock_gui_main,
+        ):
+            mock_gui_main.return_value = 0
+            main()
+            mock_gui_main.assert_called_once_with(level=expected_level)

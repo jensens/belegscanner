@@ -84,7 +84,7 @@ Beispiel:
     if args.gui:
         from belegscanner.app import main as gui_main
 
-        return gui_main()
+        return gui_main(level=level)
 
     # Initialize services
     config = ConfigManager()

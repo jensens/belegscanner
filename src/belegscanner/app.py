@@ -35,9 +35,14 @@ class BelegscannerApp(Adw.Application):
         win.present()
 
 
-def main():
-    """Entry point for the GUI application."""
-    level = logging.DEBUG if os.environ.get("BELEGSCANNER_DEBUG") else logging.WARNING
+def main(level: int | None = None) -> int:
+    """Entry point for the GUI application.
+
+    Args:
+        level: Log level override; if None, determined by BELEGSCANNER_DEBUG.
+    """
+    if level is None:
+        level = logging.DEBUG if os.environ.get("BELEGSCANNER_DEBUG") else logging.WARNING
     setup_logging(level)
 
     app = BelegscannerApp()
