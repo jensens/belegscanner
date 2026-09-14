@@ -32,6 +32,7 @@ from belegscanner.services import (
     OcrService,
     OllamaService,
 )
+from belegscanner.services.email_worker import Command, EmailWorker
 from belegscanner.services.imap import EmailMessage
 from belegscanner.services.text import sanitize_filename, strip_html
 
@@ -84,16 +85,14 @@ class EmailView(Gtk.Box):
         self.vm.connect("notify::status", self._on_status_changed)
         self.vm.connect("notify::is-busy", self._on_busy_changed)
 
+        # Worker: einziger Ort, an dem IMAP-Kommandos laufen
+        self.worker = EmailWorker(dispatch=GLib.idle_add, on_busy_changed=self._on_worker_busy)
+
         # Temp directory
         self._temp_dir = tempfile.TemporaryDirectory()
 
         # Index to select after refresh (for auto-advance)
         self._next_select_index: int | None = None
-
-        # Prefetch state
-        self._prefetch_thread: threading.Thread | None = None
-        # Note: Prefetch UID is now tracked in ViewModel (RC7)
-        self._imap_credentials: tuple[str, str] | None = None  # (user, password)
 
         # Build UI
         self._build_ui()
@@ -351,6 +350,10 @@ class EmailView(Gtk.Box):
         self.process_btn.set_sensitive(not is_busy and has_email)
         self.archive_btn.set_sensitive(not is_busy and has_email)
 
+    def _on_worker_busy(self, busy: bool) -> None:
+        """Einziger Schreiber von vm.is_busy (kommt via GLib.idle_add)."""
+        self.vm.is_busy = busy
+
     def _on_connect_clicked(self, button):
         """Handle connect button click - connect directly with stored credentials."""
         if self.vm.is_connected:
@@ -385,41 +388,31 @@ class EmailView(Gtk.Box):
         self._connect(server, user, password)
 
     def _connect(self, server: str, user: str, password: str):
-        """Connect to IMAP server."""
-        self.vm.increment_busy()
+        """Connect to IMAP server (im Worker)."""
         self.vm.status = "Verbinde..."
+        self.imap = ImapService(server)
+        imap = self.imap
+        inbox = self.config.imap_inbox
 
-        # Store credentials for prefetch connection
-        self._imap_credentials = (user, password)
+        def do_connect():
+            success, error = imap.connect(user, password)
+            if not success:
+                raise ConnectionError(error or "Verbindung fehlgeschlagen")
+            logger.debug("Verfuegbare IMAP-Ordner: %s", imap.list_folders())
+            return imap.list_emails(inbox)
 
-        def connect_thread():
-            self.imap = ImapService(server)
-            success, error_msg = self.imap.connect(user, password)
-
-            if success:
-                # Debug: Show available folders
-                folders = self.imap.list_folders()
-                logger.debug("Verfuegbare IMAP-Ordner: %s", folders)
-                logger.debug("Konfigurierter Inbox-Ordner: %s", self.config.imap_inbox)
-
-                # Establish prefetch connection for parallel fetching
-                prefetch_ok = self.imap.connect_prefetch(user, password)
-                if not prefetch_ok:
-                    logger.warning("Prefetch-Verbindung konnte nicht hergestellt werden")
-
-                # Fetch emails
-                emails = self.imap.list_emails(self.config.imap_inbox)
-                GLib.idle_add(self._on_connect_success, emails)
-            else:
-                GLib.idle_add(self._on_connect_failed, error_msg)
-
-        thread = threading.Thread(target=connect_thread, daemon=True)
-        thread.start()
+        self.worker.submit(
+            Command(
+                kind="connect",
+                fn=do_connect,
+                on_done=self._on_connect_success,
+                on_error=self._on_connect_failed,
+            )
+        )
 
     def _on_connect_success(self, emails):
         """Handle successful connection."""
         self.vm.is_connected = True
-        self.vm.decrement_busy()
         self.vm.status = f"Verbunden - {len(emails)} E-Mail(s)"
 
         self.connect_btn.set_label("Trennen")
@@ -430,13 +423,11 @@ class EmailView(Gtk.Box):
         self.vm.set_emails(emails)
         self._update_email_list()
 
-    def _on_connect_failed(self, error_msg: str = ""):
+    def _on_connect_failed(self, error: Exception):
         """Handle connection failure."""
         self.vm.is_connected = False
-        self.vm.decrement_busy()
         self.vm.status = "Verbindung fehlgeschlagen"
-
-        # Provide helpful error message
+        error_msg = str(error)
         message = "IMAP-Verbindung konnte nicht hergestellt werden."
         if "AUTHENTICATIONFAILED" in error_msg or "Invalid credentials" in error_msg:
             message = (
@@ -448,41 +439,51 @@ class EmailView(Gtk.Box):
             )
         elif error_msg:
             message = f"Fehler: {error_msg}"
-
         self._show_error("Verbindungsfehler", message)
 
     def _disconnect(self):
         """Disconnect from IMAP."""
-        if self.imap:
-            self.imap.disconnect()
-            self.imap = None
-
+        imap = self.imap
+        self.imap = None
+        if imap:
+            self.worker.submit(
+                Command(
+                    kind="disconnect",
+                    fn=imap.disconnect,
+                    on_done=lambda _result: None,
+                    on_error=lambda _error: None,
+                )
+            )
         self.vm.is_connected = False
         self.vm.status = "Nicht verbunden"
         self.connect_btn.set_label("Verbinden")
         self.refresh_btn.set_sensitive(False)
-        self.vm.clear()
+        self.vm.clear()  # bumpt die Generation: alle spaeten Ergebnisse verfallen
         self._update_email_list()
         self._clear_details()
 
     def _on_refresh_clicked(self, button):
-        """Refresh email list."""
+        """Refresh email list (im Worker)."""
         if not self.imap or not self.vm.is_connected:
             return
-
-        self.vm.increment_busy()
         self.vm.status = "Aktualisiere..."
+        imap = self.imap
+        inbox = self.config.imap_inbox
+        self.worker.submit(
+            Command(
+                kind="list",
+                fn=lambda: imap.list_emails(inbox),
+                on_done=self._on_refresh_complete,
+                on_error=self._on_refresh_failed,
+            )
+        )
 
-        def refresh_thread():
-            emails = self.imap.list_emails(self.config.imap_inbox)
-            GLib.idle_add(self._on_refresh_complete, emails)
-
-        thread = threading.Thread(target=refresh_thread, daemon=True)
-        thread.start()
+    def _on_refresh_failed(self, error: Exception):
+        self.vm.status = "Aktualisierung fehlgeschlagen"
+        logger.warning("Refresh fehlgeschlagen: %s", error)
 
     def _on_refresh_complete(self, emails):
         """Handle refresh completion."""
-        self.vm.decrement_busy()
         self.vm.status = f"{len(emails)} E-Mail(s)"
         self.vm.set_emails(emails)
         self._update_email_list()
