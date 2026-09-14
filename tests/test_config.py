@@ -11,14 +11,14 @@ class TestConfigManager:
     def test_load_returns_none_when_no_config(self, config_file: Path):
         """Load returns None when config file doesn't exist."""
         manager = ConfigManager(config_file)
-        assert manager.load() is None
+        assert manager.archive_path is None
 
     def test_load_reads_existing_config(self, config_file: Path):
         """Load reads archive path from existing config."""
         config_file.write_text("# Config\nABLAGE_PFAD=/home/test/archive\n")
         manager = ConfigManager(config_file)
 
-        result = manager.load()
+        result = manager.archive_path
 
         assert result == "/home/test/archive"
 
@@ -27,7 +27,7 @@ class TestConfigManager:
         config_file.write_text("# Comment\n\nABLAGE_PFAD=/path/to/archive\n# Another\n")
         manager = ConfigManager(config_file)
 
-        result = manager.load()
+        result = manager.archive_path
 
         assert result == "/path/to/archive"
 
@@ -36,7 +36,7 @@ class TestConfigManager:
         config_file.write_text("ABLAGE_PFAD=  /path/with/spaces  \n")
         manager = ConfigManager(config_file)
 
-        result = manager.load()
+        result = manager.archive_path
 
         assert result == "/path/with/spaces"
 
@@ -44,7 +44,7 @@ class TestConfigManager:
         """Save creates config file with archive path."""
         manager = ConfigManager(config_file)
 
-        manager.save("/home/user/nextcloud/finanzen")
+        manager.archive_path = "/home/user/nextcloud/finanzen"
 
         assert config_file.exists()
         content = config_file.read_text()
@@ -55,7 +55,7 @@ class TestConfigManager:
         nested_config = tmp_path / "deep" / "nested" / "belegscanner.conf"
         manager = ConfigManager(nested_config)
 
-        manager.save("/some/path")
+        manager.archive_path = "/some/path"
 
         assert nested_config.exists()
 
@@ -63,7 +63,7 @@ class TestConfigManager:
         """Save adds a descriptive header comment."""
         manager = ConfigManager(config_file)
 
-        manager.save("/some/path")
+        manager.archive_path = "/some/path"
 
         content = config_file.read_text()
         assert content.startswith("# Belegscanner")

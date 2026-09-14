@@ -102,24 +102,6 @@ class ConfigManager:
         self._cache[key] = value
         self._save_all()
 
-    def load(self) -> str | None:
-        """Load archive path from config file.
-
-        Returns:
-            Archive path if config exists and contains ABLAGE_PFAD, None otherwise.
-        """
-        return self._get_value("ABLAGE_PFAD")
-
-    def save(self, archive_path: str) -> None:
-        """Save archive path to config file.
-
-        Creates parent directories if needed.
-
-        Args:
-            archive_path: Path to archive directory.
-        """
-        self._set_value("ABLAGE_PFAD", archive_path)
-
     @property
     def archive_path(self) -> str | None:
         """Get archive path, loading from file on first access."""

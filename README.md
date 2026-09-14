@@ -20,7 +20,7 @@ sudo apt install sane-utils tesseract-ocr tesseract-ocr-deu \
     gir1.2-webkit-6.0
 
 # Projekt installieren
-git clone https://github.com/jensens/belegscanner.git && cd belegscanner
+git clone https://github.com/kup-org/belegscanner.git && cd belegscanner
 uv sync
 
 # GUI starten
