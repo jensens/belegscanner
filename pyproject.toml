@@ -63,4 +63,5 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S108"]  # assert and hardcoded temp paths are fine in tests
+"src/belegscanner/cli.py" = ["T201"]  # print ist die CLI-UI
 "src/belegscanner/email_view.py" = ["T201"]  # debug/timing prints (TODO: replace with logging)

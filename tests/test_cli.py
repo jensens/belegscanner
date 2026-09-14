@@ -1,5 +1,6 @@
 """Tests for CLI interface."""
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -55,3 +56,20 @@ class TestCliNoArchivePath:
         ):
             mock_config.return_value.archive_path = None
             assert main() == 1
+
+
+class TestCliVerbosity:
+    @pytest.mark.parametrize(
+        "extra_args, expected_level",
+        [([], logging.WARNING), (["-v"], logging.INFO), (["-vv"], logging.DEBUG)],
+        ids=["default", "verbose", "debug"],
+    )
+    def test_verbose_flags_configure_logging(self, extra_args, expected_level):
+        with (
+            patch("sys.argv", ["scan-beleg", "-k", "1", *extra_args]),
+            patch("belegscanner.cli.setup_logging") as mock_setup,
+            patch("belegscanner.cli.ConfigManager") as mock_config,
+        ):
+            mock_config.return_value.archive_path = None
+            main()
+            mock_setup.assert_called_once_with(expected_level)

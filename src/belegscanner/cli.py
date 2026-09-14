@@ -1,12 +1,14 @@
 """Command-line interface for Belegscanner."""
 
 import argparse
+import logging
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from belegscanner.constants import CATEGORIES
+from belegscanner.log import setup_logging
 from belegscanner.services import (
     ArchiveService,
     ConfigManager,
@@ -65,8 +67,18 @@ Beispiel:
         action="store_true",
         help="Starte GUI statt CLI",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Ausfuehrliche Ausgabe (-v: Info, -vv: Debug)",
+    )
 
     args = parser.parse_args()
+
+    level = {0: logging.WARNING, 1: logging.INFO}.get(args.verbose, logging.DEBUG)
+    setup_logging(level)
 
     # Start GUI if requested
     if args.gui:
@@ -84,15 +96,15 @@ Beispiel:
     # Get archive path
     archive_path = args.ablage or config.archive_path
     if not archive_path:
-        print("Fehler: Kein Ablage-Pfad konfiguriert.", file=sys.stderr)  # noqa: T201
-        print("Setze mit: scan-beleg --ablage /pfad/zu/ablage ...", file=sys.stderr)  # noqa: T201
+        print("Fehler: Kein Ablage-Pfad konfiguriert.", file=sys.stderr)
+        print("Setze mit: scan-beleg --ablage /pfad/zu/ablage ...", file=sys.stderr)
         return 1
 
     archive.base_path = archive_path
 
     # Check scanner
     if not scanner.is_available():
-        print("Fehler: Kein Scanner gefunden.", file=sys.stderr)  # noqa: T201
+        print("Fehler: Kein Scanner gefunden.", file=sys.stderr)
         return 1
 
     # Scan pages
@@ -102,14 +114,14 @@ Beispiel:
 
         for i in range(args.seiten):
             page_num = i + 1
-            print(f"Scanne Seite {page_num}/{args.seiten}...", end=" ", flush=True)  # noqa: T201
+            print(f"Scanne Seite {page_num}/{args.seiten}...", end=" ", flush=True)
 
             page_path = temp_path / f"page_{page_num:03d}.png"
             if scanner.scan_page(page_path):
                 pages.append(page_path)
-                print("OK")  # noqa: T201
+                print("OK")
             else:
-                print("FEHLER")  # noqa: T201
+                print("FEHLER")
                 return 1
 
             if i < args.seiten - 1:
@@ -120,20 +132,20 @@ Beispiel:
         description = args.beschreibung
 
         if not date_str or not description:
-            print("OCR läuft...", end=" ", flush=True)  # noqa: T201
+            print("OCR läuft...", end=" ", flush=True)
             text = ocr.find_best_threshold(pages[0])
 
             if not date_str:
                 date_str = ocr.extract_date(text)
                 if date_str:
-                    print(f"Datum: {date_str}", end=" ")  # noqa: T201
+                    print(f"Datum: {date_str}", end=" ")
 
             if not description:
                 description = ocr.extract_vendor(text)
                 if description:
-                    print(f"Beschreibung: {description}", end=" ")  # noqa: T201
+                    print(f"Beschreibung: {description}", end=" ")
 
-            print()  # noqa: T201
+            print()
 
         # Validate
         if not date_str:
@@ -145,20 +157,20 @@ Beispiel:
         try:
             receipt_date = datetime.strptime(date_str, "%d.%m.%Y")
         except ValueError:
-            print(f"Fehler: Ungültiges Datum '{date_str}'", file=sys.stderr)  # noqa: T201
+            print(f"Fehler: Ungültiges Datum '{date_str}'", file=sys.stderr)
             return 1
 
         # Create PDF
-        print("Erstelle PDF...", end=" ", flush=True)  # noqa: T201
+        print("Erstelle PDF...", end=" ", flush=True)
         pdf_path = temp_path / "output.pdf"
         if not pdf.create_pdf(pages, pdf_path):
-            print("FEHLER")  # noqa: T201
+            print("FEHLER")
             return 1
-        print("OK")  # noqa: T201
+        print("OK")
 
         # Archive
         category, is_cc = CATEGORIES[args.kategorie]
-        print(f"Archiviere nach {category}...", end=" ", flush=True)  # noqa: T201
+        print(f"Archiviere nach {category}...", end=" ", flush=True)
 
         try:
             final_path = archive.archive(
@@ -168,14 +180,14 @@ Beispiel:
                 category=category,
                 is_credit_card=is_cc,
             )
-            print("OK")  # noqa: T201
-            print(f"\nGespeichert: {final_path}")  # noqa: T201
+            print("OK")
+            print(f"\nGespeichert: {final_path}")
 
             if is_cc:
-                print("(Kreditkarte: Ablage im Folgemonat)")  # noqa: T201
+                print("(Kreditkarte: Ablage im Folgemonat)")
 
         except Exception as e:
-            print(f"FEHLER: {e}", file=sys.stderr)  # noqa: T201
+            print(f"FEHLER: {e}", file=sys.stderr)
             return 1
 
     return 0
