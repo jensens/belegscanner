@@ -304,8 +304,11 @@ class EmailView(Gtk.Box):
 
     def _on_realize(self, widget):
         """Handle widget realize - try auto-connect."""
-        # Use idle_add to ensure UI is fully ready
-        GLib.idle_add(self.try_auto_connect)
+        GLib.idle_add(self._auto_connect_once)
+
+    def _auto_connect_once(self) -> bool:
+        self.try_auto_connect()
+        return False  # GLib: Idle-Source nach einem Lauf entfernen
 
     def try_auto_connect(self) -> bool:
         """Try to auto-connect if configuration is complete.
@@ -316,8 +319,8 @@ class EmailView(Gtk.Box):
         Returns:
             True if auto-connect was initiated, False otherwise.
         """
-        # Don't auto-connect if already connected or connecting
-        if self.vm.is_connected or self.vm.is_busy:
+        # Don't auto-connect if already connected, connecting, or busy
+        if self.imap is not None or self.vm.is_connected or self.vm.is_busy:
             return False
 
         # Check if configuration is complete
@@ -412,6 +415,8 @@ class EmailView(Gtk.Box):
 
     def _on_connect_success(self, emails):
         """Handle successful connection."""
+        if self.imap is None:
+            return
         self.vm.is_connected = True
         self.vm.status = f"Verbunden - {len(emails)} E-Mail(s)"
 
@@ -484,6 +489,8 @@ class EmailView(Gtk.Box):
 
     def _on_refresh_complete(self, emails):
         """Handle refresh completion."""
+        if self.imap is None:
+            return
         self.vm.status = f"{len(emails)} E-Mail(s)"
         self.vm.set_emails(emails)
         self._update_email_list()
@@ -552,6 +559,8 @@ class EmailView(Gtk.Box):
             return
 
         if not (self.imap and self.vm.is_connected):
+            self._clear_details()
+            self.vm.status = "Nicht verbunden"
             return
 
         self.vm.status = "Lade E-Mail..."
@@ -845,6 +854,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
     def _on_archive_success(self, archived_uid: int):
         """Handle successful archive-only operation."""
+        if self.imap is None:
+            return
         # Remove archived email from cache
         self.vm.invalidate_cached_email(archived_uid)
 
@@ -959,6 +970,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
     def _on_process_success(self, final_path: Path, is_cc: bool, processed_uid: int):
         """Handle successful processing."""
+        if self.imap is None:
+            return
         # Remove processed email from cache
         self.vm.invalidate_cached_email(processed_uid)
 
@@ -1047,21 +1060,26 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         # Use body_text if available, otherwise strip HTML from body_html
         text_for_extraction = email.body_text or strip_html(email.body_html)
+        generation = self.vm.generation
 
         def ki_thread():
             result = self.ollama.extract(text_for_extraction)
-            GLib.idle_add(self._on_ki_extraction_complete, result)
+            GLib.idle_add(self._on_ki_extraction_complete, result, generation)
 
         # Bewusst eigener Thread statt EmailWorker: Ollama-HTTP hat mit der
         # seriellen IMAP-Queue nichts zu tun und darf parallel laufen.
         thread = threading.Thread(target=ki_thread, daemon=True)
         thread.start()
 
-    def _on_ki_extraction_complete(self, result):
+    def _on_ki_extraction_complete(self, result, generation: int):
         """Handle KI extraction completion."""
         self.vm.ki_extraction_running = False
         self.vm.status = "KI-Extraktion abgeschlossen"
         self.ki_btn.set_sensitive(True)
+
+        if not self.vm.is_current(generation):
+            logger.debug("Veraltetes KI-Extraktionsergebnis verworfen (Generation %d)", generation)
+            return
 
         if result.amount and not self.amount_row.get_text():
             display_amount = result.amount.replace(".", ",")
