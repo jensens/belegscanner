@@ -206,137 +206,127 @@ class TestImapServiceListEmails:
         assert ImapService("imap.example.com").list_emails("INBOX") == []
 
 
-@pytest.mark.skip(reason="Portierung auf IMAPClient in Folge-Tasks")
 class TestImapServiceFetchEmail:
     """Test full email fetching."""
 
-    def test_fetch_email_returns_full_message(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_fetch_email_returns_full_message(self, mock_client_cls):
         """fetch_email() returns EmailMessage with all details."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
+        # Create a proper email message
+        email_bytes = (
+            b"From: rechnung@amazon.de\r\n"
+            b"To: user@example.com\r\n"
+            b"Subject: Ihre Rechnung #12345\r\n"
+            b"Date: Fri, 15 Nov 2024 10:30:00 +0100\r\n"
+            b"Message-ID: <abc123@amazon.de>\r\n"
+            b"Content-Type: text/plain; charset=utf-8\r\n"
+            b"\r\n"
+            b"Sehr geehrter Kunde,\r\n"
+            b"anbei Ihre Rechnung.\r\n"
+        )
+        mock_client = MagicMock()
+        mock_client.fetch.return_value = {101: {b"RFC822": email_bytes}}
+        mock_client_cls.return_value = mock_client
 
-            # Create a proper email message
-            email_bytes = (
-                b"From: rechnung@amazon.de\r\n"
-                b"To: user@example.com\r\n"
-                b"Subject: Ihre Rechnung #12345\r\n"
-                b"Date: Fri, 15 Nov 2024 10:30:00 +0100\r\n"
-                b"Message-ID: <abc123@amazon.de>\r\n"
-                b"Content-Type: text/plain; charset=utf-8\r\n"
-                b"\r\n"
-                b"Sehr geehrter Kunde,\r\n"
-                b"anbei Ihre Rechnung.\r\n"
-            )
-            mock_conn.uid.return_value = ("OK", [(b"1 (RFC822 ", email_bytes, b")")])
-            mock_imap.return_value = mock_conn
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        email = service.fetch_email(101, "Rechnungseingang")
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            email = service.fetch_email(101, "Rechnungseingang")
+        assert email is not None
+        assert isinstance(email, EmailMessage)
+        assert email.uid == 101
+        assert "amazon" in email.sender.lower()
+        assert "12345" in email.subject
+        assert "<abc123@amazon.de>" in email.message_id
+        assert "Sehr geehrter Kunde" in email.body_text
+        mock_client.select_folder.assert_called_with("Rechnungseingang")
 
-            assert email is not None
-            assert isinstance(email, EmailMessage)
-            assert email.uid == 101
-            assert "amazon" in email.sender.lower()
-            assert "12345" in email.subject
-            assert "<abc123@amazon.de>" in email.message_id
-            assert "Sehr geehrter Kunde" in email.body_text
-
-    def test_fetch_email_extracts_pdf_attachments(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_fetch_email_extracts_pdf_attachments(self, mock_client_cls):
         """fetch_email() extracts PDF attachments."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
+        # Create multipart email with PDF attachment
+        email_bytes = (
+            b"From: rechnung@amazon.de\r\n"
+            b"To: user@example.com\r\n"
+            b"Subject: Ihre Rechnung\r\n"
+            b"Date: Fri, 15 Nov 2024 10:30:00 +0100\r\n"
+            b"Message-ID: <abc123@amazon.de>\r\n"
+            b"MIME-Version: 1.0\r\n"
+            b'Content-Type: multipart/mixed; boundary="boundary123"\r\n'
+            b"\r\n"
+            b"--boundary123\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"Siehe Anhang.\r\n"
+            b"--boundary123\r\n"
+            b"Content-Type: application/pdf\r\n"
+            b'Content-Disposition: attachment; filename="Rechnung.pdf"\r\n'
+            b"Content-Transfer-Encoding: base64\r\n"
+            b"\r\n"
+            b"JVBERi0xLjQK\r\n"
+            b"--boundary123--\r\n"
+        )
+        mock_client = MagicMock()
+        mock_client.fetch.return_value = {101: {b"RFC822": email_bytes}}
+        mock_client_cls.return_value = mock_client
 
-            # Create multipart email with PDF attachment
-            email_bytes = (
-                b"From: rechnung@amazon.de\r\n"
-                b"To: user@example.com\r\n"
-                b"Subject: Ihre Rechnung\r\n"
-                b"Date: Fri, 15 Nov 2024 10:30:00 +0100\r\n"
-                b"Message-ID: <abc123@amazon.de>\r\n"
-                b"MIME-Version: 1.0\r\n"
-                b'Content-Type: multipart/mixed; boundary="boundary123"\r\n'
-                b"\r\n"
-                b"--boundary123\r\n"
-                b"Content-Type: text/plain\r\n"
-                b"\r\n"
-                b"Siehe Anhang.\r\n"
-                b"--boundary123\r\n"
-                b"Content-Type: application/pdf\r\n"
-                b'Content-Disposition: attachment; filename="Rechnung.pdf"\r\n'
-                b"Content-Transfer-Encoding: base64\r\n"
-                b"\r\n"
-                b"JVBERi0xLjQK\r\n"
-                b"--boundary123--\r\n"
-            )
-            mock_conn.uid.return_value = ("OK", [(b"1 (RFC822 ", email_bytes, b")")])
-            mock_imap.return_value = mock_conn
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        email = service.fetch_email(101, "Rechnungseingang")
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            email = service.fetch_email(101, "Rechnungseingang")
+        assert email is not None
+        assert len(email.attachments) == 1
+        assert email.attachments[0].filename == "Rechnung.pdf"
+        assert email.attachments[0].content_type == "application/pdf"
+        assert len(email.attachments[0].data) > 0
 
-            assert email is not None
-            assert len(email.attachments) == 1
-            assert email.attachments[0].filename == "Rechnung.pdf"
-            assert email.attachments[0].content_type == "application/pdf"
-            assert len(email.attachments[0].data) > 0
-
-    def test_fetch_email_extracts_octet_stream_attachment(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_fetch_email_extracts_octet_stream_attachment(self, mock_client_cls):
         """fetch_email() extracts application/octet-stream with PDF filename."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            # Email with application/octet-stream attachment (like domaindiscount24)
-            email_bytes = (
-                b"From: support@domaindiscount24.com\r\n"
-                b"Subject: Ihre Rechnung\r\n"
-                b"Date: 23 Nov 2025 13:38:00 +0100\r\n"
-                b"Message-ID: <test@example.com>\r\n"
-                b'Content-Type: multipart/mixed; boundary="boundary123"\r\n'
-                b"\r\n"
-                b"--boundary123\r\n"
-                b"Content-Type: text/html; charset=utf-8\r\n"
-                b"\r\n"
-                b"<html><body>Invoice</body></html>\r\n"
-                b"--boundary123\r\n"
-                b"Content-Type: application/octet-stream\r\n"
-                b'Content-Disposition: attachment; filename="2025172897.pdf"\r\n'
-                b"\r\n"
-                b"JVBERi0xLjQK\r\n"
-                b"--boundary123--\r\n"
-            )
-            mock_conn.uid.return_value = ("OK", [(b"1 (RFC822 ", email_bytes, b")")])
-            mock_imap.return_value = mock_conn
+        # Email with application/octet-stream attachment (like domaindiscount24)
+        email_bytes = (
+            b"From: support@domaindiscount24.com\r\n"
+            b"Subject: Ihre Rechnung\r\n"
+            b"Date: 23 Nov 2025 13:38:00 +0100\r\n"
+            b"Message-ID: <test@example.com>\r\n"
+            b'Content-Type: multipart/mixed; boundary="boundary123"\r\n'
+            b"\r\n"
+            b"--boundary123\r\n"
+            b"Content-Type: text/html; charset=utf-8\r\n"
+            b"\r\n"
+            b"<html><body>Invoice</body></html>\r\n"
+            b"--boundary123\r\n"
+            b"Content-Type: application/octet-stream\r\n"
+            b'Content-Disposition: attachment; filename="2025172897.pdf"\r\n'
+            b"\r\n"
+            b"JVBERi0xLjQK\r\n"
+            b"--boundary123--\r\n"
+        )
+        mock_client = MagicMock()
+        mock_client.fetch.return_value = {101: {b"RFC822": email_bytes}}
+        mock_client_cls.return_value = mock_client
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            email = service.fetch_email(101, "INBOX")
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        email = service.fetch_email(101, "INBOX")
 
-            assert email is not None
-            assert len(email.attachments) == 1
-            assert email.attachments[0].filename == "2025172897.pdf"
-            assert email.attachments[0].content_type == "application/octet-stream"
+        assert email is not None
+        assert len(email.attachments) == 1
+        assert email.attachments[0].filename == "2025172897.pdf"
+        assert email.attachments[0].content_type == "application/octet-stream"
 
-    def test_fetch_email_returns_none_when_not_found(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_fetch_email_returns_none_when_not_found(self, mock_client_cls):
         """fetch_email() returns None when email not found."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_conn.select.return_value = ("OK", [b"1"])
-            mock_conn.uid.return_value = ("OK", [None])
-            mock_imap.return_value = mock_conn
+        mock_client = MagicMock()
+        mock_client.fetch.return_value = {}
+        mock_client_cls.return_value = mock_client
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            email = service.fetch_email(999, "Rechnungseingang")
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        email = service.fetch_email(999, "Rechnungseingang")
 
-            assert email is None
+        assert email is None
 
     def test_fetch_email_returns_none_when_not_connected(self):
         """fetch_email() returns None when not connected."""
@@ -345,6 +335,25 @@ class TestImapServiceFetchEmail:
         email = service.fetch_email(101, "Rechnungseingang")
 
         assert email is None
+
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_attachment_filename_is_sanitized_on_parse(self, mock_client_cls):
+        raw = (
+            b"From: a@b.de\r\nSubject: x\r\nDate: Mon, 4 Nov 2024 10:00:00 +0100\r\n"
+            b"Message-ID: <1@b>\r\nMIME-Version: 1.0\r\n"
+            b'Content-Type: multipart/mixed; boundary="B"\r\n\r\n'
+            b"--B\r\nContent-Type: text/plain\r\n\r\nText\r\n"
+            b"--B\r\nContent-Type: application/pdf\r\n"
+            b'Content-Disposition: attachment; filename="../../etc/passwd.pdf"\r\n'
+            b"Content-Transfer-Encoding: base64\r\n\r\nJVBERg==\r\n--B--\r\n"
+        )
+        mock_client = MagicMock()
+        mock_client.fetch.return_value = {42: {b"RFC822": raw}}
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        message = service.fetch_email(42, "INBOX")
+        assert message.attachments[0].filename == "passwd.pdf"
 
 
 @pytest.mark.skip(reason="Portierung auf IMAPClient in Folge-Tasks")
@@ -473,101 +482,91 @@ class TestHasAttachmentsDetection:
         assert self._service()._structure_has_attachments(FakePart(())) is False
 
 
-@pytest.mark.skip(reason="Portierung auf IMAPClient in Folge-Tasks")
 class TestImapServicePrefetch:
     """Test prefetch connection for parallel email fetching."""
 
-    def test_connect_prefetch_establishes_second_connection(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_connect_prefetch_establishes_second_connection(self, mock_client_cls):
         """connect_prefetch() creates a separate IMAP connection."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn1 = MagicMock()
-            mock_conn1.login.return_value = ("OK", [])
-            mock_conn2 = MagicMock()
-            mock_conn2.login.return_value = ("OK", [])
-            mock_imap.side_effect = [mock_conn1, mock_conn2]
+        main_mock = MagicMock()
+        prefetch_mock = MagicMock()
+        mock_client_cls.side_effect = [main_mock, prefetch_mock]
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            result = service.connect_prefetch("user@example.com", "password123")
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        result = service.connect_prefetch("user@example.com", "password123")
 
-            assert result is True
-            assert mock_imap.call_count == 2
+        assert result is True
+        assert mock_client_cls.call_count == 2
 
-    def test_connect_prefetch_returns_false_on_failure(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_connect_prefetch_returns_false_on_failure(self, mock_client_cls):
         """connect_prefetch() returns False when connection fails."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn1 = MagicMock()
-            mock_conn1.login.return_value = ("OK", [])
-            mock_imap.side_effect = [mock_conn1, Exception("Connection refused")]
+        main_mock = MagicMock()
+        mock_client_cls.side_effect = [main_mock, Exception("Connection refused")]
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            result = service.connect_prefetch("user@example.com", "password123")
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        result = service.connect_prefetch("user@example.com", "password123")
 
-            assert result is False
+        assert result is False
 
-    def test_fetch_email_prefetch_uses_separate_connection(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_fetch_email_prefetch_uses_separate_connection(self, mock_client_cls):
         """fetch_email_prefetch() uses the prefetch connection."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn1 = MagicMock()
-            mock_conn1.login.return_value = ("OK", [])
-            mock_conn2 = MagicMock()
-            mock_conn2.login.return_value = ("OK", [])
-            mock_conn2.select.return_value = ("OK", [b"1"])
+        main_mock = MagicMock()
+        prefetch_mock = MagicMock()
 
-            email_bytes = (
-                b"From: test@example.com\r\n"
-                b"Subject: Test\r\n"
-                b"Date: Fri, 15 Nov 2024 10:30:00 +0100\r\n"
-                b"Message-ID: <test@example.com>\r\n"
-                b"Content-Type: text/plain\r\n"
-                b"\r\n"
-                b"Test body\r\n"
-            )
-            mock_conn2.uid.return_value = ("OK", [(b"1 (RFC822 ", email_bytes, b")")])
-            mock_imap.side_effect = [mock_conn1, mock_conn2]
+        email_bytes = (
+            b"From: test@example.com\r\n"
+            b"Subject: Test\r\n"
+            b"Date: Fri, 15 Nov 2024 10:30:00 +0100\r\n"
+            b"Message-ID: <test@example.com>\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"Test body\r\n"
+        )
+        prefetch_mock.fetch.return_value = {101: {b"RFC822": email_bytes}}
+        mock_client_cls.side_effect = [main_mock, prefetch_mock]
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            service.connect_prefetch("user@example.com", "password123")
-            email = service.fetch_email_prefetch(101, "INBOX")
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        service.connect_prefetch("user@example.com", "password123")
+        email = service.fetch_email_prefetch(101, "INBOX")
 
-            assert email is not None
-            # Verify prefetch connection was used, not main connection
-            mock_conn2.select.assert_called()
-            mock_conn1.select.assert_not_called()
+        assert email is not None
+        # Verify prefetch connection was used, not main connection
+        prefetch_mock.select_folder.assert_called_with("INBOX")
+        main_mock.select_folder.assert_not_called()
 
-    def test_fetch_email_prefetch_returns_none_without_prefetch_connection(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_fetch_email_prefetch_returns_none_without_prefetch_connection(self, mock_client_cls):
         """fetch_email_prefetch() returns None if prefetch not connected."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn = MagicMock()
-            mock_conn.login.return_value = ("OK", [])
-            mock_imap.return_value = mock_conn
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            # Don't call connect_prefetch
-            email = service.fetch_email_prefetch(101, "INBOX")
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        # Don't call connect_prefetch
+        email = service.fetch_email_prefetch(101, "INBOX")
 
-            assert email is None
+        assert email is None
 
-    def test_disconnect_closes_both_connections(self):
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_disconnect_closes_both_connections(self, mock_client_cls):
         """disconnect() closes main and prefetch connections."""
-        with patch("imaplib.IMAP4_SSL") as mock_imap:
-            mock_conn1 = MagicMock()
-            mock_conn1.login.return_value = ("OK", [])
-            mock_conn2 = MagicMock()
-            mock_conn2.login.return_value = ("OK", [])
-            mock_imap.side_effect = [mock_conn1, mock_conn2]
+        main_mock = MagicMock()
+        prefetch_mock = MagicMock()
+        mock_client_cls.side_effect = [main_mock, prefetch_mock]
 
-            service = ImapService("imap.example.com")
-            service.connect("user@example.com", "password123")
-            service.connect_prefetch("user@example.com", "password123")
-            service.disconnect()
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        service.connect_prefetch("user@example.com", "password123")
+        service.disconnect()
 
-            mock_conn1.logout.assert_called_once()
-            mock_conn2.logout.assert_called_once()
-            assert service.is_connected is False
+        main_mock.logout.assert_called_once()
+        prefetch_mock.logout.assert_called_once()
+        assert service.is_connected is False
 
 
 class TestDataClasses:

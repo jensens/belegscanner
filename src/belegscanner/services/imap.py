@@ -10,6 +10,7 @@ from email.utils import parsedate_to_datetime
 from imapclient import IMAPClient
 
 from belegscanner.log import get_logger
+from belegscanner.services.text import sanitize_filename
 
 logger = get_logger(__name__)
 
@@ -156,24 +157,14 @@ class ImapService:
         """
         if not self._prefetch_connection:
             return None
-
         with self._prefetch_lock:
             try:
-                status, data = self._prefetch_connection.select(folder)
-                if status != "OK":
+                self._prefetch_connection.select_folder(folder)
+                data = self._prefetch_connection.fetch([uid], [b"RFC822"]).get(uid)
+                raw = data.get(b"RFC822") if data else None
+                if not raw:
                     return None
-
-                status, data = self._prefetch_connection.uid("FETCH", str(uid), "(RFC822)")
-                if status != "OK" or not data or not data[0]:
-                    return None
-
-                # Parse email (reuse existing parsing logic)
-                if isinstance(data[0], tuple):
-                    raw_email = data[0][1]
-                else:
-                    return None
-
-                return self._parse_email(uid, raw_email)
+                return self._parse_email(uid, raw)
             except Exception:
                 logger.debug("Prefetch-Fetch fehlgeschlagen fuer UID %d", uid)
                 return None
@@ -192,8 +183,8 @@ class ImapService:
             msg = email.message_from_bytes(raw_email)
 
             # Extract headers
-            sender = self._decode_header(msg.get("From", ""))
-            subject = self._decode_header(msg.get("Subject", ""))
+            sender = self._decode_mime_words(msg.get("From", ""))
+            subject = self._decode_mime_words(msg.get("Subject", ""))
             message_id = msg.get("Message-ID", "")
 
             # Parse date
@@ -226,7 +217,7 @@ class ImapService:
                         ) or filename_lower.endswith(attachment_extensions)
 
                     if is_attachment and filename:
-                        filename = self._decode_header(filename)
+                        filename = sanitize_filename(self._decode_mime_words(filename))
                         payload = part.get_payload(decode=True)
                         if payload:
                             attachments.append(
@@ -393,51 +384,16 @@ class ImapService:
         """
         if not self._connection:
             return None
-
         try:
-            status, data = self._connection.select(folder)
-            if status != "OK":
+            self._connection.select_folder(folder)
+            data = self._connection.fetch([uid], [b"RFC822"]).get(uid)
+            raw = data.get(b"RFC822") if data else None
+            if not raw:
                 return None
-
-            status, data = self._connection.uid("FETCH", str(uid), "(RFC822)")
-            if status != "OK" or not data or not data[0]:
-                return None
-
-            # Parse email
-            if isinstance(data[0], tuple):
-                raw_email = data[0][1]
-            else:
-                return None
-
-            return self._parse_email(uid, raw_email)
+            return self._parse_email(uid, raw)
         except Exception:
-            logger.debug("E-Mail-Fetch fehlgeschlagen fuer UID %d", uid)
+            logger.warning("E-Mail-Fetch fehlgeschlagen fuer UID %d", uid, exc_info=True)
             return None
-
-    def _decode_header(self, value: str) -> str:
-        """Decode email header value.
-
-        Args:
-            value: Raw header value.
-
-        Returns:
-            Decoded string.
-        """
-        if not value:
-            return ""
-
-        try:
-            decoded_parts = decode_header(value)
-            result = []
-            for data, charset in decoded_parts:
-                if isinstance(data, bytes):
-                    result.append(data.decode(charset or "utf-8", errors="replace"))
-                else:
-                    result.append(data)
-            return "".join(result)
-        except Exception:
-            logger.debug("Header-Dekodierung fehlgeschlagen: %s", value)
-            return value
 
     def move_email(self, uid: int, source_folder: str, target_folder: str) -> bool:
         """Move email to another folder.
