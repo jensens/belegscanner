@@ -1,5 +1,6 @@
 """Tests for ImapService."""
 
+import logging
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -138,6 +139,17 @@ class TestImapServiceListFolders:
 
         assert folders == []
 
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_list_folders_returns_empty_on_exception(self, mock_client_cls):
+        """list_folders() returns empty list when the server call raises."""
+        mock_client = MagicMock()
+        mock_client.list_folders.side_effect = Exception("BAD connection state")
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+
+        assert service.list_folders() == []
+
 
 def make_envelope(subject=b"Rechnung", name=b"Amazon", mailbox=b"billing", host=b"amazon.de"):
     """Build an imapclient Envelope for tests."""
@@ -203,6 +215,17 @@ class TestImapServiceListEmails:
     def test_list_emails_returns_empty_when_not_connected(self):
         """list_emails() returns empty list when not connected."""
         assert ImapService("imap.example.com").list_emails("INBOX") == []
+
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_list_emails_returns_empty_on_exception(self, mock_client_cls):
+        """list_emails() returns empty list when the server call raises."""
+        mock_client = MagicMock()
+        mock_client.search.side_effect = Exception("connection lost")
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+
+        assert service.list_emails("INBOX") == []
 
 
 class TestImapServiceFetchEmail:
@@ -354,6 +377,77 @@ class TestImapServiceFetchEmail:
         message = service.fetch_email(42, "INBOX")
         assert message.attachments[0].filename == "passwd.pdf"
 
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_fetch_email_returns_none_on_exception(self, mock_client_cls):
+        """fetch_email() returns None when the server call raises."""
+        mock_client = MagicMock()
+        mock_client.fetch.side_effect = Exception("connection lost")
+        mock_client_cls.return_value = mock_client
+
+        service = ImapService("imap.example.com")
+        service.connect("user@example.com", "password123")
+        email = service.fetch_email(101, "Rechnungseingang")
+
+        assert email is None
+
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_date_parse_fallback_on_invalid_date_header(self, mock_client_cls, caplog):
+        """fetch_email() falls back to datetime.now() when the Date header is unparseable."""
+        email_bytes = (
+            b"From: a@b.de\r\nSubject: x\r\nDate: not-a-real-date\r\n"
+            b"Message-ID: <1@b>\r\nContent-Type: text/plain; charset=utf-8\r\n"
+            b"\r\nText\r\n"
+        )
+        mock_client = MagicMock()
+        mock_client.fetch.return_value = {101: {b"RFC822": email_bytes}}
+        mock_client_cls.return_value = mock_client
+
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        before = datetime.now()
+        # setup_logging setzt propagate=False; fuer caplog (Handler am Root) aufheben
+        pkg_logger = logging.getLogger("belegscanner")
+        orig_propagate = pkg_logger.propagate
+        pkg_logger.propagate = True
+        try:
+            with caplog.at_level(logging.DEBUG, logger="belegscanner"):
+                message = service.fetch_email(101, "INBOX")
+        finally:
+            pkg_logger.propagate = orig_propagate
+        after = datetime.now()
+
+        assert message is not None
+        assert before <= message.date <= after
+        assert "Datum konnte nicht geparst werden" in caplog.text
+
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_parse_email_returns_none_on_unexpected_error(self, mock_client_cls, caplog):
+        """fetch_email() returns None and logs when parsing raises an unexpected error."""
+        # Unbekannter Charset laesst payload.decode() mit LookupError scheitern,
+        # was vom aeusseren except Exception in _parse_email() abgefangen wird.
+        email_bytes = (
+            b"From: a@b.de\r\nSubject: x\r\nDate: Mon, 4 Nov 2024 10:00:00 +0100\r\n"
+            b"Message-ID: <1@b>\r\nContent-Type: text/plain; charset=bogus-charset-xyz\r\n"
+            b"\r\nText\r\n"
+        )
+        mock_client = MagicMock()
+        mock_client.fetch.return_value = {101: {b"RFC822": email_bytes}}
+        mock_client_cls.return_value = mock_client
+
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        pkg_logger = logging.getLogger("belegscanner")
+        orig_propagate = pkg_logger.propagate
+        pkg_logger.propagate = True
+        try:
+            with caplog.at_level(logging.DEBUG, logger="belegscanner"):
+                message = service.fetch_email(101, "INBOX")
+        finally:
+            pkg_logger.propagate = orig_propagate
+
+        assert message is None
+        assert "E-Mail-Parsing fehlgeschlagen" in caplog.text
+
 
 class TestImapServiceMoveEmail:
     @patch("belegscanner.services.imap.IMAPClient")
@@ -391,6 +485,19 @@ class TestImapServiceMoveEmail:
 
     def test_move_returns_false_when_not_connected(self):
         assert ImapService("x").move_email(5, "a", "b") is False
+
+    @patch("belegscanner.services.imap.IMAPClient")
+    def test_move_falls_back_to_copy_delete_expunge_without_uidplus(self, mock_client_cls):
+        """Ohne MOVE- und UIDPLUS-Capability wird expunge() ohne UID-Liste aufgerufen."""
+        mock_client = MagicMock()
+        mock_client.has_capability.return_value = False
+        mock_client_cls.return_value = mock_client
+        service = ImapService("imap.example.com")
+        service.connect("u", "p")
+        assert service.move_email(5, "INBOX", "Archiv") is True
+        mock_client.copy.assert_called_once_with([5], "Archiv")
+        mock_client.delete_messages.assert_called_once_with([5])
+        mock_client.expunge.assert_called_once_with()
 
 
 class FakePart(tuple):
@@ -468,6 +575,40 @@ class TestHasAttachmentsDetection:
 
     def test_broken_structure_returns_false(self):
         assert self._service()._structure_has_attachments(FakePart(())) is False
+
+    def test_multipart_structure_raises_index_error_returns_false(self, caplog):
+        """Kaputte BODYSTRUCTURE (is_multipart=True, aber leer) loest IndexError beim
+        Zugriff auf part[0] aus und wird als 'kein Anhang' behandelt."""
+        broken = FakeMultipart(())
+        pkg_logger = logging.getLogger("belegscanner")
+        orig_propagate = pkg_logger.propagate
+        pkg_logger.propagate = True
+        try:
+            with caplog.at_level(logging.DEBUG, logger="belegscanner"):
+                result = self._service()._structure_has_attachments(broken)
+        finally:
+            pkg_logger.propagate = orig_propagate
+        assert result is False
+        assert "BODYSTRUCTURE nicht auswertbar" in caplog.text
+
+
+class TestDecodeMimeWords:
+    """Test RFC-2047 header decoding."""
+
+    def test_decode_mime_words_returns_raw_value_on_exception(self, caplog):
+        """_decode_mime_words() gibt den Rohwert zurueck, wenn decode_header() wirft."""
+        raw = "=?utf-8?q?kaputt?="
+        pkg_logger = logging.getLogger("belegscanner")
+        orig_propagate = pkg_logger.propagate
+        pkg_logger.propagate = True
+        try:
+            with patch("belegscanner.services.imap.decode_header", side_effect=Exception("boom")):
+                with caplog.at_level(logging.DEBUG, logger="belegscanner"):
+                    result = ImapService._decode_mime_words(raw)
+        finally:
+            pkg_logger.propagate = orig_propagate
+        assert result == raw
+        assert "Header-Dekodierung fehlgeschlagen" in caplog.text
 
 
 class TestDataClasses:
