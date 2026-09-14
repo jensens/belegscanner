@@ -210,3 +210,17 @@ class TestWorkerFetchDedup:
         assert worker.wait_idle()
         assert len(errors_a) == 1 and len(errors_b) == 1
         worker.stop()
+
+
+class TestWorkerBusySignal:
+    def test_busy_true_then_false_around_batch(self):
+        transitions: list[bool] = []
+        worker = EmailWorker(dispatch=sync_dispatch, on_busy_changed=transitions.append)
+        worker.submit(make_command(lambda: 1, []))
+        worker.submit(make_command(lambda: 2, []))
+        assert worker.wait_idle()
+        worker.stop()
+        assert transitions[0] is True
+        assert transitions[-1] is False
+        # Innerhalb eines Batches kein Flackern:
+        assert transitions.count(True) == transitions.count(False)
