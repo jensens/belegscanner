@@ -1025,13 +1025,12 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
     def _show_error(self, title: str, message: str):
         """Show error dialog."""
-        dialog = Adw.MessageDialog(
-            transient_for=self.parent_window,
+        dialog = Adw.AlertDialog(
             heading=title,
             body=message,
         )
         dialog.add_response("ok", "OK")
-        dialog.present()
+        dialog.present(self.parent_window)
 
     def _start_prefetch(self, uid: int):
         """Naechste E-Mail als Low-Priority-Kommando vorladen (nur in den Cache)."""

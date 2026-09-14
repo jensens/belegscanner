@@ -600,8 +600,7 @@ class BelegscannerWindow(Adw.ApplicationWindow):
 
     def _show_config_dialog(self):
         """Show configuration dialog with archive path and IMAP settings."""
-        dialog = Adw.MessageDialog(
-            transient_for=self,
+        dialog = Adw.AlertDialog(
             heading="Einstellungen",
         )
 
@@ -678,17 +677,16 @@ class BelegscannerWindow(Adw.ApplicationWindow):
                 self.vm.status = "Einstellungen gespeichert"
 
         dialog.connect("response", on_response)
-        dialog.present()
+        dialog.present(self)
 
     def _show_error(self, title: str, message: str):
         """Show error dialog."""
-        dialog = Adw.MessageDialog(
-            transient_for=self,
+        dialog = Adw.AlertDialog(
             heading=title,
             body=message,
         )
         dialog.add_response("ok", "OK")
-        dialog.present()
+        dialog.present(self)
 
     def _on_page_changed(self, stack, pspec):
         """Handle page switch between Scanner and Email views."""
