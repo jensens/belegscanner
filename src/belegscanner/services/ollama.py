@@ -7,6 +7,9 @@ import urllib.request
 from dataclasses import dataclass
 
 from belegscanner.constants import OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_TIMEOUT
+from belegscanner.log import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -69,7 +72,8 @@ Antworte NUR mit JSON (keine Erklärung):
             request = urllib.request.Request(url, method="GET")  # noqa: S310
             with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
                 return response.status == 200
-        except (TimeoutError, urllib.error.URLError, OSError):
+        except (TimeoutError, urllib.error.URLError, OSError) as e:
+            logger.debug("Ollama nicht erreichbar: %s", e)
             return False
 
     def extract(self, ocr_text: str | None) -> ExtractionResult:
@@ -87,7 +91,8 @@ Antworte NUR mit JSON (keine Erklärung):
         try:
             response_text = self._call_ollama(ocr_text)
             return self._parse_response(response_text)
-        except (TimeoutError, urllib.error.URLError, OSError, json.JSONDecodeError):
+        except (TimeoutError, urllib.error.URLError, OSError, json.JSONDecodeError) as e:
+            logger.debug("Ollama-Extraktion fehlgeschlagen: %s", e)
             return ExtractionResult(vendor=None, amount=None, currency=None, date=None)
 
     def _call_ollama(self, ocr_text: str) -> str:

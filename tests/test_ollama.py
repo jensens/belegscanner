@@ -1,7 +1,10 @@
 """Tests for OllamaService."""
 
 import json
+import logging
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from belegscanner.services.ollama import ExtractionResult, OllamaService
 
@@ -228,3 +231,49 @@ class TestExtractionResult:
         result = ExtractionResult(vendor=None, amount=None, currency=None, date=None)
 
         assert result.has_data is False
+
+
+class TestLoggingConvention:
+    """Erwartbare Umgebungsausfaelle (Ollama nicht erreichbar) loggen debug, kein ERROR."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_propagate(self):
+        """setup_logging setzt propagate=False nur beim ersten Handler-Setup;
+        Tests muessen propagate fuer caplog aufheben, aber den Ausgangszustand
+        danach wiederherstellen, um andere Tests nicht zu beeinflussen.
+        """
+        pkg_logger = logging.getLogger("belegscanner")
+        orig_propagate = pkg_logger.propagate
+        yield
+        pkg_logger.propagate = orig_propagate
+
+    @patch("belegscanner.services.ollama.urllib.request.urlopen")
+    def test_is_available_failure_logs_debug_not_error(self, mock_urlopen: MagicMock, caplog):
+        from urllib.error import URLError
+
+        mock_urlopen.side_effect = URLError("Connection refused")
+        service = OllamaService()
+
+        # setup_logging setzt propagate=False; fuer caplog (Handler am Root) aufheben
+        logging.getLogger("belegscanner").propagate = True
+        with caplog.at_level(logging.DEBUG, logger="belegscanner"):
+            assert service.is_available() is False
+
+        assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert any("Ollama" in r.message for r in caplog.records)
+
+    @patch("belegscanner.services.ollama.urllib.request.urlopen")
+    def test_extract_failure_logs_debug_not_error(self, mock_urlopen: MagicMock, caplog):
+        from urllib.error import URLError
+
+        mock_urlopen.side_effect = URLError("Connection refused")
+        service = OllamaService()
+
+        # setup_logging setzt propagate=False; fuer caplog (Handler am Root) aufheben
+        logging.getLogger("belegscanner").propagate = True
+        with caplog.at_level(logging.DEBUG, logger="belegscanner"):
+            result = service.extract("Some OCR text")
+
+        assert result.vendor is None
+        assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert any("Ollama" in r.message for r in caplog.records)

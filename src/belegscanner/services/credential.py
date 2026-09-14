@@ -85,8 +85,8 @@ class CredentialService:
                 None,
             )
             return True
-        except Exception:
-            logger.exception("Keyring-Operation fehlgeschlagen fuer %s", username)
+        except Exception as e:
+            logger.debug("Keyring nicht verfuegbar fuer %s: %s", username, e)
             return False
 
     def get_password(self, username: str) -> str | None:
@@ -112,8 +112,8 @@ class CredentialService:
                 {self.SCHEMA_ATTRIBUTE: username},
                 None,
             )
-        except Exception:
-            logger.exception("Keyring-Operation fehlgeschlagen fuer %s", username)
+        except Exception as e:
+            logger.debug("Keyring nicht verfuegbar fuer %s: %s", username, e)
             return None
 
     def delete_password(self, username: str) -> bool:
@@ -139,6 +139,6 @@ class CredentialService:
                 {self.SCHEMA_ATTRIBUTE: username},
                 None,
             )
-        except Exception:
-            logger.exception("Keyring-Operation fehlgeschlagen fuer %s", username)
+        except Exception as e:
+            logger.debug("Keyring nicht verfuegbar fuer %s: %s", username, e)
             return False

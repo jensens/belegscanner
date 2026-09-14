@@ -1,5 +1,6 @@
 """Tests for CredentialService."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 from belegscanner.services.credential import CredentialService
@@ -152,3 +153,23 @@ class TestCredentialServiceSchema:
     def test_service_uses_username_as_attribute(self):
         """Service uses 'username' as the identifying attribute."""
         assert CredentialService.SCHEMA_ATTRIBUTE == "username"
+
+
+class TestKeyringFailureLogging:
+    def test_get_password_failure_logs_debug_not_error(self, caplog):
+        """Fehlender Keyring ist erwartbar: debug, kein ERROR/Traceback."""
+        service = CredentialService()
+        fake_secret = MagicMock()
+        fake_secret.password_lookup_sync.side_effect = RuntimeError("kein Daemon")
+        # setup_logging setzt propagate=False; fuer caplog (Handler am Root) aufheben
+        pkg_logger = logging.getLogger("belegscanner")
+        orig_propagate = pkg_logger.propagate
+        logging.getLogger("belegscanner").propagate = True
+        try:
+            with patch.object(CredentialService, "_get_secret_module", return_value=fake_secret):
+                with caplog.at_level(logging.DEBUG, logger="belegscanner"):
+                    assert service.get_password("user@example.com") is None
+        finally:
+            pkg_logger.propagate = orig_propagate
+        assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert any("Keyring" in r.message for r in caplog.records)
