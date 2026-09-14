@@ -1,7 +1,6 @@
 """IMAP email service for fetching invoices."""
 
 import email
-import imaplib
 import re
 import threading
 from dataclasses import dataclass
@@ -9,9 +8,13 @@ from datetime import datetime
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 
+from imapclient import IMAPClient
+
 from belegscanner.log import get_logger
 
 logger = get_logger(__name__)
+
+SOCKET_TIMEOUT = 15  # Sekunden; verhindert Minuten-Haenger bei toter Verbindung
 
 
 @dataclass
@@ -52,6 +55,9 @@ class EmailMessage:
 class ImapService:
     """IMAP service for fetching emails from a mailbox.
 
+    Instanzen sind nicht thread-safe; ab Phase 3 ist der EmailWorker der
+    einzige Nutzer.
+
     Usage:
         service = ImapService("imap.example.com")
         if service.connect("user@example.com", "password"):
@@ -72,8 +78,8 @@ class ImapService:
         self.server = server
         self.port = port
         self.use_ssl = use_ssl
-        self._connection: imaplib.IMAP4_SSL | imaplib.IMAP4 | None = None
-        self._prefetch_connection: imaplib.IMAP4_SSL | imaplib.IMAP4 | None = None
+        self._connection: IMAPClient | None = None
+        self._prefetch_connection: IMAPClient | None = None
         self._prefetch_lock = threading.Lock()
 
     @property
@@ -92,16 +98,11 @@ class ImapService:
             Tuple of (success, error_message). Error message is empty on success.
         """
         try:
-            if self.use_ssl:
-                self._connection = imaplib.IMAP4_SSL(self.server, self.port)
-            else:
-                self._connection = imaplib.IMAP4(self.server, self.port)
-
+            self._connection = IMAPClient(
+                self.server, port=self.port, ssl=self.use_ssl, timeout=SOCKET_TIMEOUT
+            )
             self._connection.login(username, password)
             return True, ""
-        except imaplib.IMAP4.error as e:
-            self._connection = None
-            return False, str(e)
         except Exception as e:
             logger.warning("IMAP-Verbindung fehlgeschlagen: %s", e)
             self._connection = None
@@ -109,19 +110,14 @@ class ImapService:
 
     def disconnect(self) -> None:
         """Disconnect from IMAP server (both main and prefetch connections)."""
-        if self._connection:
-            try:
-                self._connection.logout()
-            except Exception:
-                logger.debug("Fehler beim IMAP-Logout (ignoriert)")
-            self._connection = None
-
-        if self._prefetch_connection:
-            try:
-                self._prefetch_connection.logout()
-            except Exception:
-                logger.debug("Fehler beim IMAP-Logout (ignoriert)")
-            self._prefetch_connection = None
+        for attr in ("_connection", "_prefetch_connection"):
+            conn = getattr(self, attr)
+            if conn is not None:
+                try:
+                    conn.logout()
+                except Exception:
+                    logger.debug("Fehler beim IMAP-Logout (ignoriert)")
+                setattr(self, attr, None)
 
     def connect_prefetch(self, username: str, password: str) -> bool:
         """Establish a separate connection for prefetching.
@@ -137,11 +133,9 @@ class ImapService:
             True if connection successful, False otherwise.
         """
         try:
-            if self.use_ssl:
-                self._prefetch_connection = imaplib.IMAP4_SSL(self.server, self.port)
-            else:
-                self._prefetch_connection = imaplib.IMAP4(self.server, self.port)
-
+            self._prefetch_connection = IMAPClient(
+                self.server, port=self.port, ssl=self.use_ssl, timeout=SOCKET_TIMEOUT
+            )
             self._prefetch_connection.login(username, password)
             return True
         except Exception:
@@ -286,23 +280,13 @@ class ImapService:
         """
         if not self._connection:
             return []
-
         try:
-            status, data = self._connection.list()
-            if status != "OK":
-                return []
-
-            folders = []
-            for item in data:
-                if item:
-                    # Parse folder name from response like: (\\HasNoChildren) "/" "FolderName"
-                    match = re.search(rb'"([^"]+)"$', item)
-                    if match:
-                        folder_name = match.group(1).decode("utf-8")
-                        folders.append(folder_name)
-            return folders
+            return [
+                name if isinstance(name, str) else name.decode("utf-8", errors="replace")
+                for _flags, _delim, name in self._connection.list_folders()
+            ]
         except Exception:
-            logger.debug("Ordnerliste konnte nicht abgerufen werden")
+            logger.warning("Ordnerliste konnte nicht abgerufen werden", exc_info=True)
             return []
 
     def list_emails(self, folder: str) -> list[EmailSummary]:
