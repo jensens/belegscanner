@@ -441,7 +441,8 @@ class BelegscannerWindow(Adw.ApplicationWindow):
             if result.currency:
                 if result.currency in CURRENCIES:
                     self.currency_dropdown.set_selected(CURRENCIES.index(result.currency))
-            self.amount_hint.set_label(f"KI: {result.currency or 'EUR'} {display_amount}")
+            currency = result.currency or DEFAULT_CURRENCY
+            self.amount_hint.set_label(f"KI: {currency} {display_amount}")
 
         if result.vendor and not self.desc_row.get_text():
             self.desc_row.set_text(result.vendor)

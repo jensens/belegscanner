@@ -83,9 +83,9 @@ cd /pfad/zu/belegscanner
 uv sync --extra dev
 ```
 
-Oder ohne uv:
+Oder ohne uv, Runtime-Dependencies:
 ```bash
-pip install python-dateutil
+pip install python-dateutil PyGObject weasyprint imapclient
 ```
 
 ## Troubleshooting

@@ -977,7 +977,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
             if imap is None:
                 raise RuntimeError("Nicht verbunden.")
-            imap.move_email(processed_uid, inbox, archive_folder)
+            if not imap.move_email(processed_uid, inbox, archive_folder):
+                raise RuntimeError("E-Mail konnte nicht verschoben werden.")
             return final_path
 
         self.worker.submit(
@@ -1051,6 +1052,8 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         )
 
     def _on_prefetch_done(self, email):
+        if self.imap is None:
+            return
         if email is not None:
             self.vm.cache_email(email)
 
