@@ -22,6 +22,7 @@ from gi.repository import Adw, GLib, Gtk, WebKit
 
 from belegscanner.constants import CATEGORIES, CURRENCIES
 from belegscanner.email_viewmodel import EmailViewModel
+from belegscanner.log import get_logger
 from belegscanner.services import (
     ArchiveService,
     ConfigManager,
@@ -33,6 +34,8 @@ from belegscanner.services import (
 )
 from belegscanner.services.imap import EmailMessage
 from belegscanner.services.text import strip_html
+
+logger = get_logger(__name__)
 
 
 class EmailView(Gtk.Box):
@@ -396,13 +399,13 @@ class EmailView(Gtk.Box):
             if success:
                 # Debug: Show available folders
                 folders = self.imap.list_folders()
-                print(f"[DEBUG] Verfügbare IMAP-Ordner: {folders}")
-                print(f"[DEBUG] Konfigurierter Inbox-Ordner: {self.config.imap_inbox}")
+                logger.debug("Verfuegbare IMAP-Ordner: %s", folders)
+                logger.debug("Konfigurierter Inbox-Ordner: %s", self.config.imap_inbox)
 
                 # Establish prefetch connection for parallel fetching
                 prefetch_ok = self.imap.connect_prefetch(user, password)
                 if not prefetch_ok:
-                    print("[DEBUG] Prefetch-Connection konnte nicht hergestellt werden")
+                    logger.warning("Prefetch-Verbindung konnte nicht hergestellt werden")
 
                 # Fetch emails
                 emails = self.imap.list_emails(self.config.imap_inbox)
@@ -471,11 +474,7 @@ class EmailView(Gtk.Box):
         self.vm.status = "Aktualisiere..."
 
         def refresh_thread():
-            import time
-
-            print(f"[TIMING] refresh_thread START: {time.time()}")
             emails = self.imap.list_emails(self.config.imap_inbox)
-            print(f"[TIMING] refresh_thread after list_emails: {time.time()}")
             GLib.idle_add(self._on_refresh_complete, emails)
 
         thread = threading.Thread(target=refresh_thread, daemon=True)
@@ -483,15 +482,10 @@ class EmailView(Gtk.Box):
 
     def _on_refresh_complete(self, emails):
         """Handle refresh completion."""
-        import time
-
-        print(f"[TIMING] _on_refresh_complete START: {time.time()}")
         self.vm.decrement_busy()
         self.vm.status = f"{len(emails)} E-Mail(s)"
         self.vm.set_emails(emails)
-        print(f"[TIMING] after set_emails: {time.time()}")
         self._update_email_list()
-        print(f"[TIMING] after _update_email_list: {time.time()}")
 
         # Auto-select next email if index was stored
         if self._next_select_index is not None:
@@ -502,11 +496,8 @@ class EmailView(Gtk.Box):
                 # Select directly - list was just updated, rows are ready
                 row = self.email_list.get_row_at_index(idx)
                 if row is not None:  # Explicit None check
-                    print(f"[TIMING] before select_row: {time.time()}")
                     self.email_list.select_row(row)
-                    print(f"[TIMING] after select_row: {time.time()}")
             self._next_select_index = None
-        print(f"[TIMING] _on_refresh_complete END: {time.time()}")
 
     def _on_search_changed(self, entry):
         """Handle search entry changes."""
@@ -554,9 +545,7 @@ class EmailView(Gtk.Box):
         # Check cache first
         cached_email = self.vm.get_cached_email(uid)
         if cached_email:
-            import time
-
-            print(f"[TIMING] Cache HIT for UID {uid}: {time.time()}")
+            logger.debug("Cache-Treffer fuer UID %d", uid)
             self.vm.set_current_email(cached_email)
             self._update_details()
             self.vm.status = "Bereit"
@@ -576,16 +565,12 @@ class EmailView(Gtk.Box):
             request_id = self.vm.start_fetch_request(uid)
 
             def fetch_thread():
-                import time
-
-                print(f"[TIMING] fetch_thread START (cache miss): {time.time()}")
                 # RC5: Capture IMAP reference to avoid race with disconnect
                 imap = self.imap
                 if imap is None:
                     GLib.idle_add(self._on_email_fetched, None, request_id)
                     return
                 email = imap.fetch_email(uid, self.config.imap_inbox)
-                print(f"[TIMING] fetch_thread after fetch_email: {time.time()}")
                 GLib.idle_add(self._on_email_fetched, email, request_id)
 
             thread = threading.Thread(target=fetch_thread, daemon=True)
@@ -598,28 +583,21 @@ class EmailView(Gtk.Box):
             email: The fetched EmailMessage or None on error.
             request_id: The request ID from start_fetch_request.
         """
-        import time
-
-        print(f"[TIMING] _on_email_fetched START: {time.time()}")
         self.vm.decrement_busy()
 
         if email:
             # Complete the fetch request - rejected if user selected another email
             if not self.vm.complete_fetch_request(request_id, email):
-                print(f"[TIMING] Stale request {request_id} rejected")
+                logger.debug("Veraltetes Fetch-Ergebnis verworfen (Request %d)", request_id)
                 return  # Stale request, ignore
             self._update_details()
             self.vm.status = "Bereit"
         else:
             self._clear_details()
             self.vm.status = "E-Mail konnte nicht geladen werden"
-        print(f"[TIMING] _on_email_fetched END: {time.time()}")
 
     def _update_details(self):
         """Update details panel with current email."""
-        import time
-
-        print(f"[TIMING] _update_details START: {time.time()}")
         # RC4: Capture snapshot at start to avoid race conditions
         # Use this snapshot throughout - do NOT access self.vm.current_email again!
         email = self.vm.current_email
@@ -631,15 +609,12 @@ class EmailView(Gtk.Box):
         self.from_row.set_text(email.sender[:60] or "-")
         self.subject_row.set_text(email.subject[:80] or "-")
         self.email_date_row.set_text(email.date.strftime("%d.%m.%Y %H:%M"))
-        print(f"[TIMING] after info rows: {time.time()}")
 
         # Update email body preview (pass snapshot)
         self._update_body_preview(email)
-        print(f"[TIMING] after _update_body_preview: {time.time()}")
 
         # Update attachments (pass snapshot)
         self._update_attachment_options(email)
-        print(f"[TIMING] after _update_attachment_options: {time.time()}")
 
         # Update suggestions
         self.date_row.set_text(self.vm.suggested_date)
@@ -891,20 +866,13 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
     def _on_archive_success(self, archived_uid: int):
         """Handle successful archive-only operation."""
-        import time
-
-        print(f"[TIMING] _on_archive_success START: {time.time()}")
-
         # Remove archived email from cache
         self.vm.invalidate_cached_email(archived_uid)
 
         self._clear_details()
-        print(f"[TIMING] after _clear_details: {time.time()}")
         # Start refresh first, then show toast (toast shouldn't block refresh)
         self._on_refresh_clicked(None)
-        print(f"[TIMING] after _on_refresh_clicked: {time.time()}")
         self._show_toast("E-Mail archiviert ✓")
-        print(f"[TIMING] after _show_toast: {time.time()}")
 
     def _on_process_clicked(self, button):
         """Process and archive the selected email/attachment."""
@@ -1079,9 +1047,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
 
         # RC7: Track prefetch in ViewModel (replaces local _prefetch_pending_uid)
         self.vm.start_prefetch(uid)
-        import time
-
-        print(f"[TIMING] _start_prefetch for UID {uid}: {time.time()}")
+        logger.debug("Prefetch gestartet fuer UID %d", uid)
 
         def prefetch_thread():
             email = self.imap.fetch_email_prefetch(uid, self.config.imap_inbox)
@@ -1103,9 +1069,7 @@ body {{ font-family: monospace; font-size: 12px; margin: 8px; white-space: pre-w
         Args:
             email: Prefetched EmailMessage.
         """
-        import time
-
-        print(f"[TIMING] _on_prefetch_complete for UID {email.uid}: {time.time()}")
+        logger.debug("Prefetch abgeschlossen fuer UID %d", email.uid)
         # RC7: Clear prefetch status in ViewModel
         self.vm.complete_prefetch(email.uid)
         self.vm.cache_email(email)
