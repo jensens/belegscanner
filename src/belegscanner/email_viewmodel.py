@@ -61,13 +61,9 @@ class EmailViewModel(GObject.Object):
         self._cache = EmailCache(max_size=20)
         self._ocr_service = OcrService()
         self._vendor_extractor = VendorExtractor()
-        # Fetch request tracking to prevent race conditions
-        self._fetch_request_id: int = 0
-        self._current_fetch_request: int | None = None
-        # Busy counter for tracking multiple concurrent operations
-        self._busy_count: int = 0
-        # Prefetch tracking to prevent duplicate fetches (RC7)
-        self._prefetch_pending_uid: int | None = None
+        # Selection generation counter: bumped on every selection change
+        # (select_email, set_emails, clear) to invalidate stale in-flight work.
+        self._generation: int = 0
 
     @property
     def emails(self) -> list[EmailSummary]:
@@ -109,6 +105,19 @@ class EmailViewModel(GObject.Object):
         """Get full current email message (after fetch)."""
         return self._current_email
 
+    @property
+    def generation(self) -> int:
+        """Aktuelle Selektions-Generation (monoton steigend)."""
+        return self._generation
+
+    def is_current(self, generation: int) -> bool:
+        """True, wenn generation noch die aktuelle Selektion bezeichnet."""
+        return generation == self._generation
+
+    def _bump_generation(self) -> int:
+        self._generation += 1
+        return self._generation
+
     def set_emails(self, emails: list[EmailSummary]) -> None:
         """Set the list of emails, sorted by date (newest first).
 
@@ -127,18 +136,17 @@ class EmailViewModel(GObject.Object):
         self._emails = sorted(emails, key=sort_key, reverse=True)
         self._selected_email = None
         self._current_email = None
+        self._bump_generation()
 
-    def select_email(self, uid: int) -> None:
-        """Select an email by UID.
-
-        Args:
-            uid: Email UID to select.
-        """
+    def select_email(self, uid: int) -> int:
+        """Select an email by UID; returns the new selection generation."""
+        generation = self._bump_generation()
         for email in self._emails:
             if email.uid == uid:
                 self._selected_email = email
-                return
+                return generation
         self._selected_email = None
+        return generation
 
     def set_current_email(self, email: EmailMessage | None) -> None:
         """Set the current full email message.
@@ -194,10 +202,8 @@ class EmailViewModel(GObject.Object):
         self.selected_attachment_index = -1
         self.ki_extraction_running = False
         self._cache.clear()
-        # Reset fetch request tracking - invalidates any pending requests
-        self._current_fetch_request = None
-        # Reset prefetch tracking (RC7)
-        self._prefetch_pending_uid = None
+        # Invalidate any pending in-flight work tied to the old selection
+        self._bump_generation()
 
     def set_current_folder(self, folder: str) -> None:
         """Set current IMAP folder for cache operations.
@@ -234,76 +240,6 @@ class EmailViewModel(GObject.Object):
         """
         self._cache.remove(self._current_folder, uid)
 
-    def start_fetch_request(self, uid: int) -> int:
-        """Start a new fetch request and return its unique ID.
-
-        Each call increments the request counter. Only the most recent
-        request ID is considered valid, preventing race conditions when
-        the user rapidly switches between emails.
-
-        Args:
-            uid: Email UID being fetched (for future tracking if needed).
-
-        Returns:
-            Unique request ID to pass to complete_fetch_request.
-        """
-        self._fetch_request_id += 1
-        self._current_fetch_request = self._fetch_request_id
-        return self._fetch_request_id
-
-    def complete_fetch_request(self, request_id: int, email: EmailMessage) -> bool:
-        """Complete a fetch request if it's still valid.
-
-        A request is valid only if its ID matches the most recent request.
-        If valid, sets the current email and caches it.
-
-        Args:
-            request_id: ID returned by start_fetch_request.
-            email: The fetched EmailMessage.
-
-        Returns:
-            True if request was accepted, False if stale/rejected.
-        """
-        if request_id != self._current_fetch_request:
-            return False
-        self.cache_email(email)
-        self.set_current_email(email)
-        return True
-
-    def cancel_fetch_request(self) -> None:
-        """Cancel any pending fetch request.
-
-        Makes the current request ID invalid so pending callbacks
-        will be rejected.
-        """
-        self._current_fetch_request = None
-
-    def increment_busy(self) -> None:
-        """Increment busy counter (start of operation).
-
-        Call this when starting a background operation.
-        The is_busy property will be True while counter > 0.
-        """
-        self._busy_count += 1
-        self.is_busy = self._busy_count > 0
-
-    def decrement_busy(self) -> None:
-        """Decrement busy counter (end of operation).
-
-        Call this when a background operation completes.
-        Safe to call even if counter is already 0.
-        """
-        self._busy_count = max(0, self._busy_count - 1)
-        self.is_busy = self._busy_count > 0
-
-    def reset_busy(self) -> None:
-        """Reset busy counter (for disconnect/error recovery).
-
-        Use this to clear the busy state completely, e.g., on disconnect.
-        """
-        self._busy_count = 0
-        self.is_busy = False
-
     def get_next_email_uid(self, current_index: int) -> int | None:
         """Get UID of next email in filtered list for prefetching.
 
@@ -318,41 +254,3 @@ class EmailViewModel(GObject.Object):
         if next_index < len(filtered):
             return filtered[next_index].uid
         return None
-
-    def start_prefetch(self, uid: int) -> None:
-        """Mark a prefetch as pending for given UID.
-
-        Call this when starting a background prefetch. This allows
-        other code to check if a prefetch is already in progress
-        to avoid duplicate fetches.
-
-        Args:
-            uid: Email UID being prefetched.
-        """
-        self._prefetch_pending_uid = uid
-
-    def complete_prefetch(self, uid: int) -> None:
-        """Mark prefetch as complete for given UID.
-
-        Only clears pending state if the UID matches, to handle
-        the case where a new prefetch started before this one completed.
-
-        Args:
-            uid: Email UID that was prefetched.
-        """
-        if self._prefetch_pending_uid == uid:
-            self._prefetch_pending_uid = None
-
-    def is_prefetch_pending_for(self, uid: int) -> bool:
-        """Check if prefetch is pending for given UID.
-
-        Used to avoid starting a duplicate fetch when the user selects
-        an email that's already being prefetched.
-
-        Args:
-            uid: Email UID to check.
-
-        Returns:
-            True if prefetch is pending for this UID.
-        """
-        return self._prefetch_pending_uid == uid
