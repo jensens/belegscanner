@@ -3,20 +3,24 @@
 import logging
 import sys
 
+_PACKAGE = "belegscanner"
 
-def get_logger(name: str) -> logging.Logger:
-    """Get a configured logger for the given module name.
+
+def setup_logging(level: int = logging.WARNING) -> None:
+    """Configure the package logger (idempotent; call once per entry point).
 
     Args:
-        name: Module name (e.g., "belegscanner.services.imap").
-
-    Returns:
-        Configured logger instance.
+        level: Log level for the whole belegscanner package.
     """
-    logger = logging.getLogger(name)
-    if not logger.handlers:
+    pkg_logger = logging.getLogger(_PACKAGE)
+    if not pkg_logger.handlers:
         handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(logging.Formatter("%(name)s [%(levelname)s] %(message)s"))
-        logger.addHandler(handler)
-        logger.setLevel(logging.WARNING)
-    return logger
+        pkg_logger.addHandler(handler)
+        pkg_logger.propagate = False
+    pkg_logger.setLevel(level)
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Return the logger for a module; configuration happens via setup_logging()."""
+    return logging.getLogger(name)
