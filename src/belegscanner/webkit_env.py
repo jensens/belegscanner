@@ -15,15 +15,26 @@ logger = get_logger(__name__)
 
 ENV_VAR = "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"
 
+_USERNS_SYSCTL = Path("/proc/sys/kernel/unprivileged_userns_clone")
+_APPARMOR_SYSCTL = Path("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+
+
+def _sysctl_is(path: Path, value: str) -> bool:
+    try:
+        return path.exists() and path.read_text().strip() == value
+    except OSError:
+        return False
+
 
 def user_namespaces_available() -> bool:
-    """True, wenn unprivilegierte User-Namespaces nutzbar sind."""
-    proc_file = Path("/proc/sys/kernel/unprivileged_userns_clone")
-    if proc_file.exists():
-        try:
-            return proc_file.read_text().strip() == "1"
-        except OSError:
-            pass
+    """True, wenn unprivilegierte User-Namespaces praktisch nutzbar sind.
+
+    Massgeblich ist ein echter bwrap-Probelauf — genau das, was WebKit beim
+    Sandbox-Start tut. Die Sysctls allein reichen nicht: Ubuntu-Familie-Kernel
+    (auch TUXEDO OS) melden in unprivileged_userns_clone "1", blocken bwrap
+    aber trotzdem ueber apparmor_restrict_unprivileged_userns. Die Sysctls
+    dienen nur als Naeherung, falls bwrap nicht ausfuehrbar ist.
+    """
     try:
         result = subprocess.run(
             ["bwrap", "--ro-bind", "/", "/", "true"],
@@ -32,7 +43,10 @@ def user_namespaces_available() -> bool:
         )
         return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
+        pass
+    if _sysctl_is(_APPARMOR_SYSCTL, "1"):
         return False
+    return _sysctl_is(_USERNS_SYSCTL, "1")
 
 
 def ensure_webkit_sandbox_env() -> None:
