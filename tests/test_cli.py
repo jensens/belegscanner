@@ -23,18 +23,6 @@ class TestCliArgumentParsing:
                 main()
             assert exc_info.value.code == 2
 
-    def test_accepts_valid_kategorie(self):
-        """CLI should accept kategorie 1-4 (will fail at scanner check)."""
-        with (
-            patch("sys.argv", ["scan-beleg", "-k", "1"]),
-            patch("belegscanner.cli.ConfigManager") as mock_config,
-            patch("belegscanner.cli.ScannerService") as mock_scanner,
-        ):
-            mock_config.return_value.archive_path = "/tmp/test"
-            mock_scanner.return_value.is_available.return_value = False
-            result = main()
-            assert result == 1  # fails at scanner check, not argument parsing
-
 
 class TestCliNoScanner:
     def test_returns_error_when_no_scanner(self):

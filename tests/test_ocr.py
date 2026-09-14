@@ -469,20 +469,21 @@ class TestFindBestThreshold:
         image_path = tmp_path / "test.png"
         image_path.touch()
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="Text")
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == "convert":
+                Path(cmd[-1]).touch()  # convert legt die BW-Datei real an
+            return MagicMock(returncode=0, stdout="Text")
 
+        mock_run.side_effect = fake_run
         service.find_best_threshold(image_path)
 
-        # Temp files are cleaned up via Path.unlink(missing_ok=True) in finally block.
-        # With mocked subprocess, files are never created, so we just verify no crash.
-        assert mock_run.call_count == 12  # 6 convert + 6 tesseract
+        leftovers = [p.name for p in tmp_path.iterdir() if "_bw" in p.name]
+        assert leftovers == []
 
 
 class TestFindBestThresholdErrors:
     def test_returns_empty_string_on_convert_failure(self, tmp_path):
         """If ImageMagick convert fails, return empty string instead of crashing."""
-        from unittest.mock import patch
-
         ocr = OcrService()
         image_path = tmp_path / "test.png"
         image_path.write_bytes(b"fake png data")
