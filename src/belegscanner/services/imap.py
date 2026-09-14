@@ -1,7 +1,6 @@
 """IMAP email service for fetching invoices."""
 
 import email
-import threading
 from dataclasses import dataclass
 from datetime import datetime
 from email.header import decode_header
@@ -79,8 +78,6 @@ class ImapService:
         self.port = port
         self.use_ssl = use_ssl
         self._connection: IMAPClient | None = None
-        self._prefetch_connection: IMAPClient | None = None
-        self._prefetch_lock = threading.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -109,65 +106,13 @@ class ImapService:
             return False, str(e)
 
     def disconnect(self) -> None:
-        """Disconnect from IMAP server (both main and prefetch connections)."""
-        for attr in ("_connection", "_prefetch_connection"):
-            conn = getattr(self, attr)
-            if conn is not None:
-                try:
-                    conn.logout()
-                except Exception:
-                    logger.debug("Fehler beim IMAP-Logout (ignoriert)")
-                setattr(self, attr, None)
-
-    def connect_prefetch(self, username: str, password: str) -> bool:
-        """Establish a separate connection for prefetching.
-
-        This connection is used for parallel email fetching while the
-        main connection handles other operations.
-
-        Args:
-            username: IMAP username/email.
-            password: IMAP password.
-
-        Returns:
-            True if connection successful, False otherwise.
-        """
-        try:
-            self._prefetch_connection = IMAPClient(
-                self.server, port=self.port, ssl=self.use_ssl, timeout=SOCKET_TIMEOUT
-            )
-            self._prefetch_connection.login(username, password)
-            return True
-        except Exception:
-            logger.warning("Prefetch-Verbindung fehlgeschlagen")
-            self._prefetch_connection = None
-            return False
-
-    def fetch_email_prefetch(self, uid: int, folder: str) -> EmailMessage | None:
-        """Fetch email using the prefetch connection.
-
-        Thread-safe method for fetching emails in parallel with main operations.
-
-        Args:
-            uid: Email UID.
-            folder: Folder containing the email.
-
-        Returns:
-            EmailMessage or None if not found or prefetch not connected.
-        """
-        if not self._prefetch_connection:
-            return None
-        with self._prefetch_lock:
+        """Disconnect from IMAP server."""
+        if self._connection is not None:
             try:
-                self._prefetch_connection.select_folder(folder)
-                data = self._prefetch_connection.fetch([uid], [b"RFC822"]).get(uid)
-                raw = data.get(b"RFC822") if data else None
-                if not raw:
-                    return None
-                return self._parse_email(uid, raw)
+                self._connection.logout()
             except Exception:
-                logger.debug("Prefetch-Fetch fehlgeschlagen fuer UID %d", uid)
-                return None
+                logger.debug("Fehler beim IMAP-Logout (ignoriert)")
+            self._connection = None
 
     def _parse_email(self, uid: int, raw_email: bytes) -> EmailMessage | None:
         """Parse raw email bytes into EmailMessage.
